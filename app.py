@@ -2,10 +2,12 @@
 Trials Analysis Web App (Streamlit)
 -----------------------------------
 - Reads multiple Excel files + sheets
-- Cleans messy headers / non-numeric data
+- Preserves original column names (TQ, TC, NDVI, etc.)
 - Computes stats (mean, quartiles, std dev, whiskers, outliers)
 - Optional ANOVA
-- Generates boxplots (per sheet + combined across dates)
+- Generates:
+    • Per-sheet boxplots + stats
+    • Per-treatment boxplots across all dates for each metric
 - Exports: Stats_Summary.xlsx, Boxplots.pdf, Individual_Plots.zip
 """
 
@@ -51,36 +53,6 @@ def detect_header_row(xls_path_or_buf, sheet_name, max_check_rows: int = 25) -> 
 
 
 # ----------------------------
-# Column standardization
-# ----------------------------
-def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df = df.dropna(axis=0, how="all").dropna(axis=1, how="all")
-    cleaned_cols = []
-    default_labels = [
-        "Rep",
-        "Plot",
-        "Treatment",
-        "Score1",
-        "Score2",
-        "Percent",
-        "Count",
-        "Group",
-        "Index",
-    ]
-    for i, col in enumerate(df.columns):
-        name = str(col)
-        if name.startswith("Unnamed") or re.search(
-            r"Trial Code|Trial Name|Date|Area|Assessor|STRI", name, re.I
-        ):
-            cleaned_cols.append(default_labels[i] if i < len(default_labels) else f"Col{i+1}")
-        else:
-            cleaned_cols.append(re.sub(r"\s+", " ", name).strip())
-    df.columns = cleaned_cols
-    return df
-
-
-# ----------------------------
 # Stats computation
 # ----------------------------
 def compute_group_stats(df: pd.DataFrame, group_col: str, metric: str) -> pd.DataFrame:
@@ -94,7 +66,6 @@ def compute_group_stats(df: pd.DataFrame, group_col: str, metric: str) -> pd.Dat
         q3 = np.percentile(values, 75)
         iqr = q3 - q1
 
-        # ✅ Safe whisker handling
         vals_in_lower = values[values >= (q1 - 1.5 * iqr)]
         vals_in_upper = values[values <= (q3 + 1.5 * iqr)]
         lower_whisker = vals_in_lower.min() if not vals_in_lower.empty else np.nan
@@ -139,34 +110,24 @@ def try_anova(df: pd.DataFrame, group_col: str, metric: str) -> Optional[float]:
 # ----------------------------
 # Plotting
 # ----------------------------
-def make_boxplot(df: pd.DataFrame, group_col: str, metric: str, title: str, ylabel: Optional[str] = None):
-    plt.figure(figsize=(8, 6))
-    safe_values = pd.to_numeric(df[metric], errors="coerce")
-    safe_df = pd.DataFrame({group_col: df[group_col], metric: safe_values})
-    safe_df = safe_df.dropna()
-    if safe_df.empty:
-        plt.text(0.5, 0.5, f"No numeric data for {metric}", ha="center")
-    else:
-        safe_df.boxplot(column=metric, by=group_col)
-        plt.title(title)
-        plt.suptitle("")
-        plt.xlabel(group_col)
-        plt.ylabel(ylabel or metric)
-    plt.tight_layout()
+def plot_treatment_across_dates(all_data: pd.DataFrame, treatment: str, metric: str, title_prefix="Trial Results"):
+    subset = all_data[(all_data["Treatment"] == treatment) & (all_data["Metric"] == metric)]
+    if subset.empty:
+        return None
 
-
-def plot_across_dates(all_data: pd.DataFrame, metric: str, title_prefix: str = "Trial Results"):
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(10, 6))
     sns.boxplot(
-        data=all_data,
+        data=subset,
         x="Date",
-        y="Value",   # ✅ Always use Value as Y
-        hue="Treatment",
-        palette="Set2"
+        y="Value",
+        color="skyblue"
     )
-    plt.title(f"{title_prefix} – Box & Whisker by Treatment across Dates – {metric}")
+    plt.title(f"{title_prefix} – {metric} – {treatment}")
     plt.xticks(rotation=45)
+    plt.ylabel(metric)
+    plt.xlabel("Date")
     plt.tight_layout()
+
     buf = io.BytesIO()
     plt.savefig(buf, format="png", dpi=160)
     plt.close()
@@ -177,16 +138,18 @@ def plot_across_dates(all_data: pd.DataFrame, metric: str, title_prefix: str = "
 # ----------------------------
 # Process a single sheet
 # ----------------------------
-def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, List[Tuple[str, io.BytesIO]]]:
+def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.DataFrame, pd.DataFrame]:
     if opts.get("override_header") is not None:
         header_row = opts["override_header"]
     else:
         header_row = detect_header_row(xls_path_or_buf, sheet_name)
 
     df = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=header_row)
-    df = standardize_columns(df)
 
-    group_col = opts.get("group_col") or ("Treatment" if "Treatment" in df.columns else df.columns[2])
+    if "Treatment" not in df.columns:
+        group_col = df.columns[2]  # fallback
+    else:
+        group_col = "Treatment"
 
     metrics = []
     for c in df.columns:
@@ -197,7 +160,6 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.Data
             metrics.append(c)
 
     stats_rows = []
-    plot_images: List[Tuple[str, io.BytesIO]] = []
     long_data_rows = []
 
     for metric in metrics:
@@ -208,20 +170,11 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.Data
                 stats_df.insert(0, "Sheet", sheet_name)
                 stats_rows.append(stats_df)
 
-            title = f"{opts.get('title_prefix', 'Trial Results')} – {sheet_name} – {metric}"
-            make_boxplot(df, group_col, metric, title, ylabel=metric)
-            buf = io.BytesIO()
-            plt.savefig(buf, format="png", dpi=160)
-            plt.close()
-            buf.seek(0)
-            plot_images.append((metric, buf))
-
             if opts.get("run_anova", False):
                 p = try_anova(df, group_col, metric)
                 if p is not None and not stats_df.empty:
                     stats_rows[-1]["ANOVA p-value"] = p
 
-            # Collect raw long-form data for combined plots
             for _, row in df.iterrows():
                 val = pd.to_numeric(row[metric], errors="coerce")
                 if not np.isnan(val):
@@ -238,7 +191,7 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.Data
 
     all_stats = pd.concat(stats_rows, ignore_index=True) if stats_rows else pd.DataFrame()
     long_data = pd.DataFrame(long_data_rows)
-    return all_stats, long_data, plot_images
+    return all_stats, long_data
 
 
 # ----------------------------
@@ -247,15 +200,13 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.Data
 def main():
     st.set_page_config(page_title="Trials Analysis Tool", layout="wide")
     st.title("📊 Trials Analysis Tool")
-    st.write("Upload Excel files; the app will analyze every sheet and produce stats + boxplots for each numeric metric.")
+    st.write("Upload Excel files; the app will analyze every sheet and produce stats + boxplots.")
 
     with st.sidebar:
         st.header("Options")
         run_anova = st.checkbox("Include ANOVA", value=True)
-        save_pdf = st.checkbox("Create Boxplots.pdf", value=True)
-        save_pngs = st.checkbox("Create PNGs (zipped)", value=True)
         export_stats = st.checkbox("Export Stats to Excel", value=True)
-        combine_across_dates = st.checkbox("Generate combined plots across dates", value=True)
+        combined_mode = st.checkbox("Per-treatment plots across dates", value=True)
         title_prefix = st.text_input("Plot title prefix", value="Trial Results")
         override_header = st.text_input("Override header row (optional)", value="")
         override_header_val = int(override_header) if override_header.strip().isdigit() else None
@@ -274,10 +225,6 @@ def main():
         with st.spinner("Processing…"):
             all_stats_frames = []
             all_long_data = []
-            pdf_bytes = io.BytesIO()
-            pdf = PdfPages(pdf_bytes) if save_pdf else None
-            zip_buf = io.BytesIO()
-            png_zip = zipfile.ZipFile(zip_buf, mode="w", compression=zipfile.ZIP_DEFLATED) if save_pngs else None
 
             for upl in uploaded_files:
                 file_label = upl.name
@@ -291,7 +238,7 @@ def main():
                 for sheet_name in xls.sheet_names:
                     st.write(f"↳ Processing sheet: `{sheet_name}` …")
                     try:
-                        stats_df, long_data, plot_images = process_sheet(
+                        stats_df, long_data = process_sheet(
                             upl,
                             sheet_name,
                             {
@@ -311,25 +258,6 @@ def main():
                     if not long_data.empty:
                         all_long_data.append(long_data)
 
-                    for metric, png_bytes in plot_images:
-                        if pdf is not None:
-                            img = plt.imread(png_bytes)
-                            plt.figure(figsize=(8, 6))
-                            plt.imshow(img)
-                            plt.axis("off")
-                            pdf.savefig()
-                            plt.close()
-                        if png_zip is not None:
-                            arcname = f"{os.path.splitext(file_label)[0]}/{sheet_name}/{metric}.png"
-                            png_zip.writestr(arcname, png_bytes.getvalue())
-
-            if pdf is not None:
-                pdf.close()
-                pdf_bytes.seek(0)
-            if png_zip is not None:
-                png_zip.close()
-                zip_buf.seek(0)
-
             stats_xlsx_bytes = None
             if export_stats and all_stats_frames:
                 combined_stats = pd.concat(all_stats_frames, ignore_index=True)
@@ -339,44 +267,23 @@ def main():
                 out_xlsx.seek(0)
                 stats_xlsx_bytes = out_xlsx.read()
 
-            # ----------------------------
-            # Combined across dates plots
-            # ----------------------------
-            if combine_across_dates and all_long_data:
-                st.subheader("📊 Combined Plots Across Dates")
+            if combined_mode and all_long_data:
+                st.subheader("📊 Per-Treatment Plots Across Dates")
                 all_data = pd.concat(all_long_data, ignore_index=True)
                 for metric in all_data["Metric"].unique():
-                    subset = all_data[all_data["Metric"] == metric]
-                    if subset.empty:
-                        continue
-                    try:
-                        buf = plot_across_dates(subset, metric, title_prefix=title_prefix)
-                        st.image(buf, caption=f"Combined plot for {metric}")
-                    except Exception as e:
-                        st.warning(f"Could not plot combined view for {metric}: {e}")
+                    st.markdown(f"### Metric: {metric}")
+                    for treatment in all_data["Treatment"].dropna().unique():
+                        buf = plot_treatment_across_dates(all_data, treatment, metric, title_prefix=title_prefix)
+                        if buf is not None:
+                            st.image(buf, caption=f"{treatment} – {metric}")
 
         st.success("Analysis complete.")
-        cols = st.columns(3)
         if export_stats and stats_xlsx_bytes is not None:
-            cols[0].download_button(
+            st.download_button(
                 label="📊 Download Stats_Summary.xlsx",
                 data=stats_xlsx_bytes,
                 file_name=f"Stats_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-        if save_pdf and pdf_bytes.getbuffer().nbytes > 0:
-            cols[1].download_button(
-                label="📈 Download Boxplots.pdf",
-                data=pdf_bytes.getvalue(),
-                file_name=f"Boxplots_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                mime="application/pdf",
-            )
-        if save_pngs and zip_buf.getbuffer().nbytes > 0:
-            cols[2].download_button(
-                label="🖼️ Download Individual_Plots.zip",
-                data=zip_buf.getvalue(),
-                file_name=f"Individual_Plots_{datetime.now().strftime('%Y%m%d_%H%M')}.zip",
-                mime="application/zip",
             )
 
 
