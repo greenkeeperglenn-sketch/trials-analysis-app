@@ -5,7 +5,7 @@ Trials Analysis Web App (Streamlit)
 - Cleans messy headers / non-numeric data
 - Computes stats (mean, quartiles, std dev, whiskers, outliers)
 - Optional ANOVA
-- Generates boxplots
+- Generates boxplots (per sheet + combined across dates)
 - Exports: Stats_Summary.xlsx, Boxplots.pdf, Individual_Plots.zip
 """
 
@@ -22,6 +22,7 @@ import streamlit as st
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy import stats
+import seaborn as sns
 
 
 # ----------------------------
@@ -80,7 +81,7 @@ def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ----------------------------
-# Stats computation (fixed version)
+# Stats computation
 # ----------------------------
 def compute_group_stats(df: pd.DataFrame, group_col: str, metric: str) -> pd.DataFrame:
     rows = []
@@ -93,7 +94,7 @@ def compute_group_stats(df: pd.DataFrame, group_col: str, metric: str) -> pd.Dat
         q3 = np.percentile(values, 75)
         iqr = q3 - q1
 
-        # ✅ Safe whisker handling (works on all Python/NumPy versions)
+        # ✅ Safe whisker handling
         vals_in_lower = values[values >= (q1 - 1.5 * iqr)]
         vals_in_upper = values[values <= (q3 + 1.5 * iqr)]
         lower_whisker = vals_in_lower.min() if not vals_in_lower.empty else np.nan
@@ -154,10 +155,29 @@ def make_boxplot(df: pd.DataFrame, group_col: str, metric: str, title: str, ylab
     plt.tight_layout()
 
 
+def plot_across_dates(all_data: pd.DataFrame, metric: str, title_prefix: str = "Trial Results"):
+    plt.figure(figsize=(12, 6))
+    sns.boxplot(
+        data=all_data,
+        x="Date",
+        y=metric,
+        hue="Treatment",
+        palette="Set2"
+    )
+    plt.title(f"{title_prefix} – Box & Whisker by Treatment across Dates – {metric}")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=160)
+    plt.close()
+    buf.seek(0)
+    return buf
+
+
 # ----------------------------
 # Process a single sheet
 # ----------------------------
-def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.DataFrame, List[Tuple[str, io.BytesIO]]]:
+def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, List[Tuple[str, io.BytesIO]]]:
     if opts.get("override_header") is not None:
         header_row = opts["override_header"]
     else:
@@ -178,6 +198,7 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.Data
 
     stats_rows = []
     plot_images: List[Tuple[str, io.BytesIO]] = []
+    long_data_rows = []
 
     for metric in metrics:
         try:
@@ -199,12 +220,25 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.Data
                 p = try_anova(df, group_col, metric)
                 if p is not None and not stats_df.empty:
                     stats_rows[-1]["ANOVA p-value"] = p
+
+            # Collect raw long-form data for combined plots
+            for _, row in df.iterrows():
+                val = pd.to_numeric(row[metric], errors="coerce")
+                if not np.isnan(val):
+                    long_data_rows.append({
+                        "File": opts.get("file_label", ""),
+                        "Date": sheet_name,
+                        "Treatment": row[group_col],
+                        "Metric": metric,
+                        "Value": val,
+                    })
         except Exception as e:
             st.warning(f"  Skipped metric {metric} in sheet {sheet_name}: {e}")
             continue
 
     all_stats = pd.concat(stats_rows, ignore_index=True) if stats_rows else pd.DataFrame()
-    return all_stats, plot_images
+    long_data = pd.DataFrame(long_data_rows)
+    return all_stats, long_data, plot_images
 
 
 # ----------------------------
@@ -221,6 +255,7 @@ def main():
         save_pdf = st.checkbox("Create Boxplots.pdf", value=True)
         save_pngs = st.checkbox("Create PNGs (zipped)", value=True)
         export_stats = st.checkbox("Export Stats to Excel", value=True)
+        combine_across_dates = st.checkbox("Generate combined plots across dates", value=True)
         title_prefix = st.text_input("Plot title prefix", value="Trial Results")
         override_header = st.text_input("Override header row (optional)", value="")
         override_header_val = int(override_header) if override_header.strip().isdigit() else None
@@ -238,6 +273,7 @@ def main():
     if st.button("Run Analysis", type="primary"):
         with st.spinner("Processing…"):
             all_stats_frames = []
+            all_long_data = []
             pdf_bytes = io.BytesIO()
             pdf = PdfPages(pdf_bytes) if save_pdf else None
             zip_buf = io.BytesIO()
@@ -255,13 +291,14 @@ def main():
                 for sheet_name in xls.sheet_names:
                     st.write(f"↳ Processing sheet: `{sheet_name}` …")
                     try:
-                        stats_df, plot_images = process_sheet(
+                        stats_df, long_data, plot_images = process_sheet(
                             upl,
                             sheet_name,
                             {
                                 "run_anova": run_anova,
                                 "title_prefix": title_prefix,
                                 "override_header": override_header_val,
+                                "file_label": file_label,
                             },
                         )
                     except Exception as e:
@@ -271,6 +308,8 @@ def main():
                     if not stats_df.empty:
                         stats_df.insert(0, "File", file_label)
                         all_stats_frames.append(stats_df)
+                    if not long_data.empty:
+                        all_long_data.append(long_data)
 
                     for metric, png_bytes in plot_images:
                         if pdf is not None:
@@ -299,6 +338,19 @@ def main():
                     combined_stats.to_excel(writer, index=False, sheet_name="Summary")
                 out_xlsx.seek(0)
                 stats_xlsx_bytes = out_xlsx.read()
+
+            # ----------------------------
+            # Combined across dates plots
+            # ----------------------------
+            if combine_across_dates and all_long_data:
+                st.subheader("📊 Combined Plots Across Dates")
+                all_data = pd.concat(all_long_data, ignore_index=True)
+                for metric in all_data["Metric"].unique():
+                    try:
+                        buf = plot_across_dates(all_data[all_data["Metric"] == metric], metric, title_prefix=title_prefix)
+                        st.image(buf, caption=f"Combined plot for {metric}")
+                    except Exception as e:
+                        st.warning(f"Could not plot combined view for {metric}: {e}")
 
         st.success("Analysis complete.")
         cols = st.columns(3)
