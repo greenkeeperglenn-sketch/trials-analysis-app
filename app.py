@@ -3,7 +3,7 @@ Trials Analysis Web App (Streamlit)
 -----------------------------------
 - Upload Excel files
 - Choose header row (Excel 1–9) in sidebar
-- Detects numeric columns (TQ, TC, NDVI, etc.)
+- Detects numeric columns (TQ, TC, NDVI, etc.) by forcing conversion
 - Computes stats (mean, quartiles, whiskers, ANOVA if requested)
 - ✅ Always shows boxplots when 'Show Boxplots' is ticked
 - Exports stats summary as Excel
@@ -138,11 +138,14 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict, header_row: int)
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
     # Detect numeric columns (excluding Date and Treatment)
-    metrics = [
-        c for c in df.columns
-        if c not in [group_col, "Date"]
-        and pd.api.types.is_numeric_dtype(pd.to_numeric(df[c], errors="coerce"))
-    ]
+    metrics = []
+    for c in df.columns:
+        if c in [group_col, "Date"]:
+            continue
+        # Force conversion to numeric
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+        if df[c].notna().sum() > 0:
+            metrics.append(c)
 
     stats_rows = []
     for metric in metrics:
@@ -173,7 +176,7 @@ def main():
         header_row = st.selectbox("Header row (Excel row number)", options=list(range(1, 10)), index=5)  # default row 6
         run_anova = st.checkbox("Include ANOVA", value=True)
         export_stats = st.checkbox("Export Stats to Excel", value=True)
-        show_boxplots = st.checkbox("Show Boxplots", value=True)  # ✅ added back
+        show_boxplots = st.checkbox("Show Boxplots", value=True)
         title_prefix = st.text_input("Plot title prefix", value="Trial Results")
 
     uploaded_files = st.file_uploader(
@@ -259,11 +262,13 @@ def main():
             if show_boxplots and not all_data.empty:
                 st.subheader("📊 Boxplots per Metric")
 
-                numeric_cols = [
-                    c for c in all_data.columns
-                    if c not in ["Date", "Treatment"]
-                    and pd.api.types.is_numeric_dtype(pd.to_numeric(all_data[c], errors="coerce"))
-                ]
+                numeric_cols = []
+                for c in all_data.columns:
+                    if c in ["Date", "Treatment"]:
+                        continue
+                    all_data[c] = pd.to_numeric(all_data[c], errors="coerce")
+                    if all_data[c].notna().sum() > 0:
+                        numeric_cols.append(c)
 
                 st.write("Numeric columns being plotted:", numeric_cols)
 
