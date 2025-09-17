@@ -3,11 +3,11 @@ Trials Analysis Web App (Streamlit)
 -----------------------------------
 - Upload Excel files
 - Choose header row (Excel 1–9) in sidebar
-- Detects metrics (TQ, TC, NDVI, etc.)
+- Detects numeric columns (TQ, TC, NDVI, etc.)
 - Computes stats (mean, quartiles, whiskers, ANOVA if requested)
-- Shows one boxplot per metric across treatments & dates
+- Always shows boxplots for all numeric columns (except Date & Treatment)
 - Exports stats summary as Excel
-- ✅ Debug block added to confirm headers + metrics
+- Includes debug info so you can confirm headers
 """
 
 import io
@@ -137,14 +137,12 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict, header_row: int)
     else:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
-    # Metrics = all numeric-looking columns except Date/Treatment
-    metrics = []
-    for c in df.columns:
-        if c in [group_col, "Date"]:
-            continue
-        vals = pd.to_numeric(df[c], errors="coerce")
-        if pd.api.types.is_numeric_dtype(vals) and vals.notna().sum() > 0:
-            metrics.append(c)
+    # Detect numeric columns (excluding Date and Treatment)
+    metrics = [
+        c for c in df.columns
+        if c not in [group_col, "Date"]
+        and pd.api.types.is_numeric_dtype(pd.to_numeric(df[c], errors="coerce"))
+    ]
 
     stats_rows = []
     for metric in metrics:
@@ -191,7 +189,6 @@ def main():
         with st.spinner("Processing…"):
             all_stats_frames = []
             all_data_frames = []
-            metrics_found = set()
 
             for upl in uploaded_files:
                 file_label = upl.name
@@ -220,7 +217,6 @@ def main():
                         all_stats_frames.append(stats_df)
                     if not df.empty:
                         all_data_frames.append(df)
-                    metrics_found.update(metrics)
 
             # Merge all sheets/files
             if all_data_frames:
@@ -245,8 +241,6 @@ def main():
                 out_xlsx.seek(0)
                 stats_xlsx_bytes = out_xlsx.read()
 
-            st.write("Metrics detected for plotting:", sorted(metrics_found))
-
             # Colors for treatments
             colors = {
                 "1": "black",
@@ -260,12 +254,19 @@ def main():
                 "9": "gray"
             }
 
-            # Make one chart per metric
+            # ✅ Always plot numeric columns
             if not all_data.empty:
                 st.subheader("📊 Boxplots per Metric")
-                for metric in sorted(metrics_found):
-                    if metric not in all_data.columns:
-                        continue
+
+                numeric_cols = [
+                    c for c in all_data.columns
+                    if c not in ["Date", "Treatment"]
+                    and pd.api.types.is_numeric_dtype(pd.to_numeric(all_data[c], errors="coerce"))
+                ]
+
+                st.write("Numeric columns being plotted:", numeric_cols)
+
+                for metric in numeric_cols:
                     buf = plot_metric_across_dates(all_data, metric, colors, title_prefix=title_prefix)
                     if buf is not None:
                         st.image(buf, caption=f"Box & Whisker across Dates – {metric}")
