@@ -160,7 +160,7 @@ def plot_across_dates(all_data: pd.DataFrame, metric: str, title_prefix: str = "
     sns.boxplot(
         data=all_data,
         x="Date",
-        y=metric,
+        y="Value",   # ✅ Always use Value as Y
         hue="Treatment",
         palette="Set2"
     )
@@ -346,8 +346,11 @@ def main():
                 st.subheader("📊 Combined Plots Across Dates")
                 all_data = pd.concat(all_long_data, ignore_index=True)
                 for metric in all_data["Metric"].unique():
+                    subset = all_data[all_data["Metric"] == metric]
+                    if subset.empty:
+                        continue
                     try:
-                        buf = plot_across_dates(all_data[all_data["Metric"] == metric], metric, title_prefix=title_prefix)
+                        buf = plot_across_dates(subset, metric, title_prefix=title_prefix)
                         st.image(buf, caption=f"Combined plot for {metric}")
                     except Exception as e:
                         st.warning(f"Could not plot combined view for {metric}: {e}")
