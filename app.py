@@ -2,8 +2,8 @@
 Trials Analysis Web App (Streamlit)
 -----------------------------------
 - Reads multiple Excel files + sheets
-- Detects correct header row (assessment titles often at row 4)
-- Preserves original metric names (TQ, TC, NDVI, etc.)
+- Uses row 5 as header row (assessment titles: TQ, TC, NDVI, etc.)
+- Preserves original metric names
 - Computes stats (mean, quartiles, std dev, whiskers, outliers)
 - Optional ANOVA
 - Generates:
@@ -18,32 +18,6 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from datetime import datetime
 from scipy import stats
-
-
-# ----------------------------
-# Header row detection
-# ----------------------------
-def detect_header_row(xls_path_or_buf, sheet_name, max_check_rows: int = 10) -> int:
-    """
-    Detect which row contains the real headers (TQ, TC, NDVI, etc.)
-    Prefers row 3 (Excel row 4).
-    """
-    for r in range(max_check_rows):
-        try:
-            sample = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=r, nrows=1)
-        except Exception:
-            continue
-        if sample.empty:
-            continue
-
-        headers = [str(c).strip().lower() for c in sample.columns]
-
-        # If row contains TQ/TC/NDVI or >=3 valid names, assume it's the header
-        if any(h in ["tq", "tc", "ndvi"] for h in headers) or len([h for h in headers if not h.startswith("unnamed")]) >= 3:
-            return r
-
-    # Default fallback: row 3 (Excel's row 4)
-    return 3
 
 
 # ----------------------------
@@ -110,7 +84,6 @@ def try_anova(df: pd.DataFrame, group_col: str, metric: str):
 # Plotting
 # ----------------------------
 def plot_metric_across_dates(df: pd.DataFrame, metric: str, colors: dict, title_prefix="Trial Results"):
-    # Ensure required columns exist
     if "Date" not in df.columns or "Treatment" not in df.columns or metric not in df.columns:
         return None
 
@@ -120,8 +93,6 @@ def plot_metric_across_dates(df: pd.DataFrame, metric: str, colors: dict, title_
     subset["Treatment"] = subset["Treatment"].astype(str)
 
     plt.figure(figsize=(14, 6))
-
-    # Loop over treatments
     for i, treatment in enumerate(sorted(subset["Treatment"].unique()), start=1):
         t_data = subset[subset["Treatment"] == treatment]
         data = [t_data.loc[t_data["Date"] == d, metric].values
@@ -139,7 +110,7 @@ def plot_metric_across_dates(df: pd.DataFrame, metric: str, colors: dict, title_
     plt.title(f"{title_prefix} – {metric}")
     plt.xlabel("Dates (grouped per Treatment)")
     plt.ylabel(metric)
-    plt.xticks([])  # hide crowded labels
+    plt.xticks([])
     plt.tight_layout()
 
     buf = io.BytesIO()
@@ -153,8 +124,8 @@ def plot_metric_across_dates(df: pd.DataFrame, metric: str, colors: dict, title_
 # Process a single sheet
 # ----------------------------
 def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict):
-    header_row = detect_header_row(xls_path_or_buf, sheet_name)
-    df = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=header_row)
+    # ✅ Force header row 5 (Excel row 5 → Pandas header=4)
+    df = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=4)
 
     # Treatment column
     if "Treatment" not in df.columns:
@@ -162,13 +133,13 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict):
     else:
         group_col = "Treatment"
 
-    # If no Date column, use sheet name as Date
+    # If no Date column, use sheet name
     if "Date" not in df.columns:
         df["Date"] = pd.to_datetime(sheet_name, errors="coerce")
     else:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
-    # Detect metrics
+    # Metrics = all numeric columns except Date/Treatment
     metrics = []
     for c in df.columns:
         if c in [group_col, "Date"]:
@@ -238,9 +209,7 @@ def main():
                         df, stats_df, metrics = process_sheet(
                             upl,
                             sheet_name,
-                            {
-                                "run_anova": run_anova,
-                            },
+                            {"run_anova": run_anova},
                         )
                     except Exception as e:
                         st.warning(f"  Skipped sheet `{sheet_name}` due to error: {e}")
@@ -292,7 +261,7 @@ def main():
             if not all_data.empty:
                 st.subheader("📊 Boxplots per Metric")
                 for metric in sorted(metrics_found):
-                    if metric not in all_data.columns:  # ✅ avoid KeyError
+                    if metric not in all_data.columns:
                         continue
                     buf = plot_metric_across_dates(all_data, metric, colors, title_prefix=title_prefix)
                     if buf is not None:
