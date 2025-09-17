@@ -158,8 +158,10 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict):
     else:
         group_col = "Treatment"
 
-    # Convert Date if present
-    if "Date" in df.columns:
+    # If no Date column, use sheet name as Date
+    if "Date" not in df.columns:
+        df["Date"] = pd.to_datetime(sheet_name, errors="coerce")
+    else:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
     metrics = []
@@ -261,6 +263,12 @@ def main():
                     combined_stats.to_excel(writer, index=False, sheet_name="Summary")
                 out_xlsx.seek(0)
                 stats_xlsx_bytes = out_xlsx.read()
+
+            # ✅ Preview combined data
+            if not all_data.empty:
+                st.write("### Preview of combined data")
+                st.dataframe(all_data.head(20))
+                st.write("Columns detected:", list(all_data.columns))
 
             # Colors for treatments
             colors = {
