@@ -240,4 +240,41 @@ def main():
             # ✅ Debug output
             st.write("### Preview of combined data")
             st.dataframe(all_data.head(20))
-            st.write("Columns detected:", list(all_data.columns_
+            st.write("Columns detected:", list(all_data.columns))
+            st.write("Metrics detected for plotting:", sorted(metrics_found))
+
+            # Colors for treatments
+            colors = {
+                "1": "black",
+                "2": "orange",
+                "3": "blue",
+                "4": "green",
+                "5": "red",
+                "6": "purple",
+                "7": "brown",
+                "8": "pink",
+                "9": "gray"
+            }
+
+            # Make one chart per metric
+            if not all_data.empty:
+                st.subheader("📊 Boxplots per Metric")
+                for metric in sorted(metrics_found):
+                    if metric not in all_data.columns:
+                        continue
+                    buf = plot_metric_across_dates(all_data, metric, colors, title_prefix=title_prefix)
+                    if buf is not None:
+                        st.image(buf, caption=f"Box & Whisker across Dates – {metric}")
+
+        st.success("Analysis complete.")
+        if export_stats and stats_xlsx_bytes is not None:
+            st.download_button(
+                label="📊 Download Stats_Summary.xlsx",
+                data=stats_xlsx_bytes,
+                file_name=f"Stats_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+
+if __name__ == "__main__":
+    main()
