@@ -1,14 +1,12 @@
 """
 Trials Analysis Web App (Streamlit)
 -----------------------------------
-- Reads multiple Excel files + sheets
-- Lets you choose header row (Excel row 1–9) in the sidebar
-- Preserves original metric names (TQ, TC, NDVI, etc.)
-- Computes stats (mean, quartiles, std dev, whiskers, outliers)
-- Optional ANOVA
-- Generates:
-    • One boxplot per metric (each showing all treatments across all dates)
-- Exports: Stats_Summary.xlsx
+- Upload Excel files
+- Choose header row (Excel 1–9) in sidebar
+- Detects metrics (TQ, TC, NDVI, etc.)
+- Computes stats (mean, quartiles, whiskers, ANOVA if requested)
+- Shows one boxplot per metric across treatments & dates
+- Exports stats summary as Excel
 """
 
 import io
@@ -124,7 +122,6 @@ def plot_metric_across_dates(df: pd.DataFrame, metric: str, colors: dict, title_
 # Process a single sheet
 # ----------------------------
 def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict, header_row: int):
-    # ✅ Use header row from sidebar (Excel numbering → Pandas header = header_row-1)
     df = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=header_row-1)
 
     # Treatment column
@@ -139,13 +136,13 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict, header_row: int)
     else:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
-    # Metrics = all numeric columns except Date/Treatment
+    # Metrics = all numeric-looking columns except Date/Treatment
     metrics = []
     for c in df.columns:
         if c in [group_col, "Date"]:
             continue
         vals = pd.to_numeric(df[c], errors="coerce")
-        if vals.notna().sum() >= 3:
+        if pd.api.types.is_numeric_dtype(vals) and vals.notna().sum() > 0:
             metrics.append(c)
 
     stats_rows = []
@@ -240,44 +237,7 @@ def main():
                 out_xlsx.seek(0)
                 stats_xlsx_bytes = out_xlsx.read()
 
-            # ✅ Preview combined data
-            if not all_data.empty:
-                st.write("### Preview of combined data")
-                st.dataframe(all_data.head(20))
-                st.write("Columns detected:", list(all_data.columns))
-
-            # Colors for treatments
-            colors = {
-                "1": "black",
-                "2": "orange",
-                "3": "blue",
-                "4": "green",
-                "5": "red",
-                "6": "purple",
-                "7": "brown",
-                "8": "pink",
-                "9": "gray"
-            }
-
-            # Make one chart per metric
-            if not all_data.empty:
-                st.subheader("📊 Boxplots per Metric")
-                for metric in sorted(metrics_found):
-                    if metric not in all_data.columns:
-                        continue
-                    buf = plot_metric_across_dates(all_data, metric, colors, title_prefix=title_prefix)
-                    if buf is not None:
-                        st.image(buf, caption=f"Box & Whisker across Dates – {metric}")
-
-        st.success("Analysis complete.")
-        if export_stats and stats_xlsx_bytes is not None:
-            st.download_button(
-                label="📊 Download Stats_Summary.xlsx",
-                data=stats_xlsx_bytes,
-                file_name=f"Stats_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-
-
-if __name__ == "__main__":
-    main()
+            # ✅ Debug output
+            st.write("### Preview of combined data")
+            st.dataframe(all_data.head(20))
+            st.write("Columns detected:", list(all_data.columns_
