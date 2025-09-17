@@ -5,7 +5,7 @@ Trials Analysis Web App (Streamlit)
 - Preserves original metric names (TQ, TC, NDVI, etc.)
 - Computes stats (mean, quartiles, std dev, whiskers, outliers)
 - Optional ANOVA
-- Generates: 
+- Generates:
     • One boxplot per metric (each showing all treatments across all dates)
 - Exports: Stats_Summary.xlsx
 """
@@ -47,6 +47,9 @@ def detect_header_row(xls_path_or_buf, sheet_name, max_check_rows: int = 25) -> 
 # ----------------------------
 def compute_group_stats(df: pd.DataFrame, group_col: str, metric: str) -> pd.DataFrame:
     rows = []
+    if group_col not in df.columns or metric not in df.columns:
+        return pd.DataFrame()
+
     grouped = df.groupby(group_col, dropna=True)[metric]
     for treatment, values in grouped:
         values = pd.to_numeric(values, errors="coerce").dropna()
@@ -83,6 +86,8 @@ def compute_group_stats(df: pd.DataFrame, group_col: str, metric: str) -> pd.Dat
 
 
 def try_anova(df: pd.DataFrame, group_col: str, metric: str):
+    if group_col not in df.columns or metric not in df.columns:
+        return None
     groups = []
     for _, g in df.groupby(group_col):
         vals = pd.to_numeric(g[metric], errors="coerce").dropna()
@@ -101,6 +106,10 @@ def try_anova(df: pd.DataFrame, group_col: str, metric: str):
 # Plotting
 # ----------------------------
 def plot_metric_across_dates(df: pd.DataFrame, metric: str, colors: dict, title_prefix="Trial Results"):
+    # Ensure required columns exist
+    if "Date" not in df.columns or "Treatment" not in df.columns or metric not in df.columns:
+        return None
+
     subset = df[["Date", "Treatment", metric]].dropna()
     if subset.empty:
         return None
@@ -113,6 +122,8 @@ def plot_metric_across_dates(df: pd.DataFrame, metric: str, colors: dict, title_
         t_data = subset[subset["Treatment"] == treatment]
         data = [t_data.loc[t_data["Date"] == d, metric].values
                 for d in sorted(t_data["Date"].unique())]
+        if len(data) == 0:
+            continue
         plt.boxplot(
             data,
             positions=[j + (i-1)*(len(data)+1) for j in range(len(data))],
@@ -143,11 +154,11 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict):
 
     # Expect columns roughly: Date, ..., Treatment, ..., metric(s)
     if "Treatment" not in df.columns:
-        group_col = df.columns[2]  # fallback
+        group_col = df.columns[2] if len(df.columns) > 2 else df.columns[0]
     else:
         group_col = "Treatment"
 
-    # Convert Date
+    # Convert Date if present
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
@@ -268,6 +279,8 @@ def main():
             if not all_data.empty:
                 st.subheader("📊 Boxplots per Metric")
                 for metric in sorted(metrics_found):
+                    if metric not in all_data.columns:  # ✅ avoid KeyError
+                        continue
                     buf = plot_metric_across_dates(all_data, metric, colors, title_prefix=title_prefix)
                     if buf is not None:
                         st.image(buf, caption=f"Box & Whisker across Dates – {metric}")
