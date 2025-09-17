@@ -2,8 +2,8 @@
 Trials Analysis Web App (Streamlit)
 -----------------------------------
 - Reads multiple Excel files + sheets
-- Uses row 5 as header row (assessment titles: TQ, TC, NDVI, etc.)
-- Preserves original metric names
+- Lets you choose header row (Excel row 1–9) in the sidebar
+- Preserves original metric names (TQ, TC, NDVI, etc.)
 - Computes stats (mean, quartiles, std dev, whiskers, outliers)
 - Optional ANOVA
 - Generates:
@@ -123,9 +123,9 @@ def plot_metric_across_dates(df: pd.DataFrame, metric: str, colors: dict, title_
 # ----------------------------
 # Process a single sheet
 # ----------------------------
-def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict):
-    # ✅ Force header row 5 (Excel row 5 → Pandas header=4)
-    df = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=4)
+def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict, header_row: int):
+    # ✅ Use header row from sidebar (Excel numbering → Pandas header = header_row-1)
+    df = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=header_row-1)
 
     # Treatment column
     if "Treatment" not in df.columns:
@@ -174,6 +174,7 @@ def main():
 
     with st.sidebar:
         st.header("Options")
+        header_row = st.selectbox("Header row (Excel row number)", options=list(range(1, 10)), index=5)  # default row 6
         run_anova = st.checkbox("Include ANOVA", value=True)
         export_stats = st.checkbox("Export Stats to Excel", value=True)
         title_prefix = st.text_input("Plot title prefix", value="Trial Results")
@@ -210,6 +211,7 @@ def main():
                             upl,
                             sheet_name,
                             {"run_anova": run_anova},
+                            header_row=header_row
                         )
                     except Exception as e:
                         st.warning(f"  Skipped sheet `{sheet_name}` due to error: {e}")
