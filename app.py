@@ -2,29 +2,21 @@
 Trials Analysis Web App (Streamlit)
 -----------------------------------
 - Reads multiple Excel files + sheets
-- Preserves original column names (TQ, TC, NDVI, etc.)
+- Preserves original metric names (TQ, TC, NDVI, etc.)
 - Computes stats (mean, quartiles, std dev, whiskers, outliers)
 - Optional ANOVA
-- Generates:
-    • Per-sheet boxplots + stats
-    • Per-treatment boxplots across all dates for each metric
-- Exports: Stats_Summary.xlsx, Boxplots.pdf, Individual_Plots.zip
+- Generates: 
+    • One boxplot per metric (each showing all treatments across all dates)
+- Exports: Stats_Summary.xlsx
 """
 
 import io
-import os
-import re
-import zipfile
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
-
 import numpy as np
 import pandas as pd
 import streamlit as st
-from matplotlib import pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.pyplot as plt
+from datetime import datetime
 from scipy import stats
-import seaborn as sns
 
 
 # ----------------------------
@@ -46,9 +38,7 @@ def detect_header_row(xls_path_or_buf, sheet_name, max_check_rows: int = 25) -> 
             lambda row: pd.to_numeric(row, errors="coerce").notna().sum(), axis=1
         )
         if (numeric_counts >= 3).sum() >= 3:
-            first_col = pd.to_numeric(sample.iloc[:, 0], errors="coerce")
-            if first_col.notna().sum() >= 3:
-                return r
+            return r
     return 9
 
 
@@ -92,7 +82,7 @@ def compute_group_stats(df: pd.DataFrame, group_col: str, metric: str) -> pd.Dat
     return pd.DataFrame(rows)
 
 
-def try_anova(df: pd.DataFrame, group_col: str, metric: str) -> Optional[float]:
+def try_anova(df: pd.DataFrame, group_col: str, metric: str):
     groups = []
     for _, g in df.groupby(group_col):
         vals = pd.to_numeric(g[metric], errors="coerce").dropna()
@@ -100,7 +90,7 @@ def try_anova(df: pd.DataFrame, group_col: str, metric: str) -> Optional[float]:
             groups.append(vals.values)
     if len(groups) >= 2:
         try:
-            f, p = stats.f_oneway(*groups)
+            _, p = stats.f_oneway(*groups)
             return float(p)
         except Exception:
             return None
@@ -110,22 +100,31 @@ def try_anova(df: pd.DataFrame, group_col: str, metric: str) -> Optional[float]:
 # ----------------------------
 # Plotting
 # ----------------------------
-def plot_treatment_across_dates(all_data: pd.DataFrame, treatment: str, metric: str, title_prefix="Trial Results"):
-    subset = all_data[(all_data["Treatment"] == treatment) & (all_data["Metric"] == metric)]
+def plot_metric_across_dates(df: pd.DataFrame, metric: str, colors: dict, title_prefix="Trial Results"):
+    subset = df[["Date", "Treatment", metric]].dropna()
     if subset.empty:
         return None
+    subset["Treatment"] = subset["Treatment"].astype(str)
 
-    plt.figure(figsize=(10, 6))
-    sns.boxplot(
-        data=subset,
-        x="Date",
-        y="Value",
-        color="skyblue"
-    )
-    plt.title(f"{title_prefix} – {metric} – {treatment}")
-    plt.xticks(rotation=45)
+    plt.figure(figsize=(14, 6))
+
+    # Loop over treatments
+    for i, treatment in enumerate(sorted(subset["Treatment"].unique()), start=1):
+        t_data = subset[subset["Treatment"] == treatment]
+        data = [t_data.loc[t_data["Date"] == d, metric].values
+                for d in sorted(t_data["Date"].unique())]
+        plt.boxplot(
+            data,
+            positions=[j + (i-1)*(len(data)+1) for j in range(len(data))],
+            widths=0.6,
+            patch_artist=True,
+            boxprops=dict(facecolor=colors.get(treatment, "lightgray"))
+        )
+
+    plt.title(f"{title_prefix} – {metric}")
+    plt.xlabel("Dates (grouped per Treatment)")
     plt.ylabel(metric)
-    plt.xlabel("Date")
+    plt.xticks([])  # hide crowded labels
     plt.tight_layout()
 
     buf = io.BytesIO()
@@ -138,60 +137,42 @@ def plot_treatment_across_dates(all_data: pd.DataFrame, treatment: str, metric: 
 # ----------------------------
 # Process a single sheet
 # ----------------------------
-def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    if opts.get("override_header") is not None:
-        header_row = opts["override_header"]
-    else:
-        header_row = detect_header_row(xls_path_or_buf, sheet_name)
-
+def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict):
+    header_row = detect_header_row(xls_path_or_buf, sheet_name)
     df = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=header_row)
 
+    # Expect columns roughly: Date, ..., Treatment, ..., metric(s)
     if "Treatment" not in df.columns:
         group_col = df.columns[2]  # fallback
     else:
         group_col = "Treatment"
 
+    # Convert Date
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+
     metrics = []
     for c in df.columns:
-        if c == group_col:
+        if c in [group_col, "Date"]:
             continue
         vals = pd.to_numeric(df[c], errors="coerce")
         if vals.notna().sum() >= 3:
             metrics.append(c)
 
     stats_rows = []
-    long_data_rows = []
-
     for metric in metrics:
-        try:
-            stats_df = compute_group_stats(df, group_col, metric)
-            if not stats_df.empty:
-                stats_df.insert(0, "Metric", metric)
-                stats_df.insert(0, "Sheet", sheet_name)
-                stats_rows.append(stats_df)
-
+        stats_df = compute_group_stats(df, group_col, metric)
+        if not stats_df.empty:
+            stats_df.insert(0, "Metric", metric)
+            stats_df.insert(0, "Sheet", sheet_name)
+            stats_rows.append(stats_df)
             if opts.get("run_anova", False):
                 p = try_anova(df, group_col, metric)
-                if p is not None and not stats_df.empty:
+                if p is not None:
                     stats_rows[-1]["ANOVA p-value"] = p
 
-            for _, row in df.iterrows():
-                val = pd.to_numeric(row[metric], errors="coerce")
-                if not np.isnan(val):
-                    long_data_rows.append({
-                        "File": opts.get("file_label", ""),
-                        "Date": sheet_name,
-                        "Treatment": row[group_col],
-                        "Metric": metric,
-                        "Value": val,
-                    })
-        except Exception as e:
-            st.warning(f"  Skipped metric {metric} in sheet {sheet_name}: {e}")
-            continue
-
     all_stats = pd.concat(stats_rows, ignore_index=True) if stats_rows else pd.DataFrame()
-    long_data = pd.DataFrame(long_data_rows)
-    return all_stats, long_data
+    return df, all_stats, metrics
 
 
 # ----------------------------
@@ -200,16 +181,13 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: Dict) -> Tuple[pd.Data
 def main():
     st.set_page_config(page_title="Trials Analysis Tool", layout="wide")
     st.title("📊 Trials Analysis Tool")
-    st.write("Upload Excel files; the app will analyze every sheet and produce stats + boxplots.")
+    st.write("Upload Excel files; the app will analyze each metric and produce one boxplot per metric.")
 
     with st.sidebar:
         st.header("Options")
         run_anova = st.checkbox("Include ANOVA", value=True)
         export_stats = st.checkbox("Export Stats to Excel", value=True)
-        combined_mode = st.checkbox("Per-treatment plots across dates", value=True)
         title_prefix = st.text_input("Plot title prefix", value="Trial Results")
-        override_header = st.text_input("Override header row (optional)", value="")
-        override_header_val = int(override_header) if override_header.strip().isdigit() else None
 
     uploaded_files = st.file_uploader(
         "Drag & drop Excel files (.xlsx) or click to browse",
@@ -224,7 +202,8 @@ def main():
     if st.button("Run Analysis", type="primary"):
         with st.spinner("Processing…"):
             all_stats_frames = []
-            all_long_data = []
+            all_data_frames = []
+            metrics_found = set()
 
             for upl in uploaded_files:
                 file_label = upl.name
@@ -238,14 +217,11 @@ def main():
                 for sheet_name in xls.sheet_names:
                     st.write(f"↳ Processing sheet: `{sheet_name}` …")
                     try:
-                        stats_df, long_data = process_sheet(
+                        df, stats_df, metrics = process_sheet(
                             upl,
                             sheet_name,
                             {
                                 "run_anova": run_anova,
-                                "title_prefix": title_prefix,
-                                "override_header": override_header_val,
-                                "file_label": file_label,
                             },
                         )
                     except Exception as e:
@@ -255,9 +231,17 @@ def main():
                     if not stats_df.empty:
                         stats_df.insert(0, "File", file_label)
                         all_stats_frames.append(stats_df)
-                    if not long_data.empty:
-                        all_long_data.append(long_data)
+                    if not df.empty:
+                        all_data_frames.append(df)
+                    metrics_found.update(metrics)
 
+            # Merge all sheets/files
+            if all_data_frames:
+                all_data = pd.concat(all_data_frames, ignore_index=True)
+            else:
+                all_data = pd.DataFrame()
+
+            # Export stats
             stats_xlsx_bytes = None
             if export_stats and all_stats_frames:
                 combined_stats = pd.concat(all_stats_frames, ignore_index=True)
@@ -267,15 +251,26 @@ def main():
                 out_xlsx.seek(0)
                 stats_xlsx_bytes = out_xlsx.read()
 
-            if combined_mode and all_long_data:
-                st.subheader("📊 Per-Treatment Plots Across Dates")
-                all_data = pd.concat(all_long_data, ignore_index=True)
-                for metric in all_data["Metric"].unique():
-                    st.markdown(f"### Metric: {metric}")
-                    for treatment in all_data["Treatment"].dropna().unique():
-                        buf = plot_treatment_across_dates(all_data, treatment, metric, title_prefix=title_prefix)
-                        if buf is not None:
-                            st.image(buf, caption=f"{treatment} – {metric}")
+            # Colors for treatments
+            colors = {
+                "1": "black",
+                "2": "orange",
+                "3": "blue",
+                "4": "green",
+                "5": "red",
+                "6": "purple",
+                "7": "brown",
+                "8": "pink",
+                "9": "gray"
+            }
+
+            # Make one chart per metric
+            if not all_data.empty:
+                st.subheader("📊 Boxplots per Metric")
+                for metric in sorted(metrics_found):
+                    buf = plot_metric_across_dates(all_data, metric, colors, title_prefix=title_prefix)
+                    if buf is not None:
+                        st.image(buf, caption=f"Box & Whisker across Dates – {metric}")
 
         st.success("Analysis complete.")
         if export_stats and stats_xlsx_bytes is not None:
