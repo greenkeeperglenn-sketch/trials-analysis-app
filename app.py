@@ -5,7 +5,7 @@ Trials Analysis Web App (Streamlit)
 - Choose header row (Excel 1–9) in sidebar
 - Detects numeric columns (TQ, TC, NDVI, etc.)
 - Computes stats (mean, quartiles, whiskers, ANOVA if requested)
-- Always shows boxplots for all numeric columns (except Date & Treatment)
+- ✅ Always shows boxplots when 'Show Boxplots' is ticked
 - Exports stats summary as Excel
 - Includes debug info so you can confirm headers
 """
@@ -173,6 +173,7 @@ def main():
         header_row = st.selectbox("Header row (Excel row number)", options=list(range(1, 10)), index=5)  # default row 6
         run_anova = st.checkbox("Include ANOVA", value=True)
         export_stats = st.checkbox("Export Stats to Excel", value=True)
+        show_boxplots = st.checkbox("Show Boxplots", value=True)  # ✅ added back
         title_prefix = st.text_input("Plot title prefix", value="Trial Results")
 
     uploaded_files = st.file_uploader(
@@ -254,8 +255,8 @@ def main():
                 "9": "gray"
             }
 
-            # ✅ Always plot numeric columns
-            if not all_data.empty:
+            # ✅ Only show boxplots if enabled
+            if show_boxplots and not all_data.empty:
                 st.subheader("📊 Boxplots per Metric")
 
                 numeric_cols = [
