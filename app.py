@@ -7,6 +7,7 @@ Trials Analysis Web App (Streamlit)
 - Computes stats (mean, quartiles, whiskers, ANOVA if requested)
 - Shows one boxplot per metric across treatments & dates
 - Exports stats summary as Excel
+- ✅ Debug block added to confirm headers + metrics
 """
 
 import io
@@ -227,6 +228,13 @@ def main():
             else:
                 all_data = pd.DataFrame()
 
+            # ✅ Debug output
+            if not all_data.empty:
+                st.write("### 🔍 Debug Check")
+                st.write("Shape of combined data:", all_data.shape)
+                st.write("First 10 column names:", list(all_data.columns)[:10])
+                st.dataframe(all_data.head(10).T)
+
             # Export stats
             stats_xlsx_bytes = None
             if export_stats and all_stats_frames:
@@ -237,10 +245,6 @@ def main():
                 out_xlsx.seek(0)
                 stats_xlsx_bytes = out_xlsx.read()
 
-            # ✅ Debug output
-            st.write("### Preview of combined data")
-            st.dataframe(all_data.head(20))
-            st.write("Columns detected:", list(all_data.columns))
             st.write("Metrics detected for plotting:", sorted(metrics_found))
 
             # Colors for treatments
