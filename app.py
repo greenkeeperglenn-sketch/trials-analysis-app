@@ -2,6 +2,7 @@
 Trials Analysis Web App (Streamlit)
 -----------------------------------
 - Reads multiple Excel files + sheets
+- Detects correct header row (assessment titles often at row 4)
 - Preserves original metric names (TQ, TC, NDVI, etc.)
 - Computes stats (mean, quartiles, std dev, whiskers, outliers)
 - Optional ANOVA
@@ -22,24 +23,27 @@ from scipy import stats
 # ----------------------------
 # Header row detection
 # ----------------------------
-def detect_header_row(xls_path_or_buf, sheet_name, max_check_rows: int = 25) -> int:
-    for r in range(0, max_check_rows):
+def detect_header_row(xls_path_or_buf, sheet_name, max_check_rows: int = 10) -> int:
+    """
+    Detect which row contains the real headers (TQ, TC, NDVI, etc.)
+    Prefers row 3 (Excel row 4).
+    """
+    for r in range(max_check_rows):
         try:
-            sample = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=r, nrows=12)
+            sample = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=r, nrows=1)
         except Exception:
             continue
         if sample.empty:
             continue
-        sample = sample.dropna(axis=1, how="all")
-        if sample.shape[1] < 3:
-            continue
-        data_part = sample.iloc[0:8]
-        numeric_counts = data_part.apply(
-            lambda row: pd.to_numeric(row, errors="coerce").notna().sum(), axis=1
-        )
-        if (numeric_counts >= 3).sum() >= 3:
+
+        headers = [str(c).strip().lower() for c in sample.columns]
+
+        # If row contains TQ/TC/NDVI or >=3 valid names, assume it's the header
+        if any(h in ["tq", "tc", "ndvi"] for h in headers) or len([h for h in headers if not h.startswith("unnamed")]) >= 3:
             return r
-    return 9
+
+    # Default fallback: row 3 (Excel's row 4)
+    return 3
 
 
 # ----------------------------
@@ -152,7 +156,7 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict):
     header_row = detect_header_row(xls_path_or_buf, sheet_name)
     df = pd.read_excel(xls_path_or_buf, sheet_name=sheet_name, header=header_row)
 
-    # Expect columns roughly: Date, ..., Treatment, ..., metric(s)
+    # Treatment column
     if "Treatment" not in df.columns:
         group_col = df.columns[2] if len(df.columns) > 2 else df.columns[0]
     else:
@@ -164,6 +168,7 @@ def process_sheet(xls_path_or_buf, sheet_name: str, opts: dict):
     else:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
+    # Detect metrics
     metrics = []
     for c in df.columns:
         if c in [group_col, "Date"]:
