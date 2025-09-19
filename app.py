@@ -7,7 +7,6 @@ import numpy as np
 from scipy import stats
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
-import scikit_posthocs as sp
 
 st.title("Assessment Data Explorer")
 
@@ -146,16 +145,17 @@ if uploaded_file:
             all_figs.append(fig)
 
             # --- Stats Table ---
-            wide_table = pd.DataFrame({ "Treatment": treatments })
+            wide_table = pd.DataFrame({"Treatment": treatments})
 
+            summaries = {}
             for date in sorted(df_sub["Date"].unique()):
-                df_date = df_sub[df_sub["Date"] == date]
+                df_date = df_sub[df_sub["Date"] == date].rename(columns={treat_col: "Treatment"})
 
                 # Means
-                means = df_date.groupby(treat_col)["Value"].mean()
+                means = df_date.groupby("Treatment")["Value"].mean()
 
                 # ANOVA
-                model = ols("Value ~ C("+treat_col+")", data=df_date).fit()
+                model = ols("Value ~ C(Treatment)", data=df_date).fit()
                 anova_table = sm.stats.anova_lm(model, typ=2)
                 p_val = anova_table["PR(>F)"][0]
                 df_error = model.df_resid
@@ -163,31 +163,44 @@ if uploaded_file:
 
                 # LSD calc
                 t_crit = stats.t.ppf(1 - alpha_choice/2, df_error)
-                lsd = t_crit * np.sqrt(2*mse/df_date[treat_col].value_counts().min())
+                lsd = t_crit * np.sqrt(2*mse/df_date["Treatment"].value_counts().min())
 
                 # %CV
                 cv = 100 * np.sqrt(mse) / means.mean()
 
-                # Grouping letters
-                letters = sp.posthoc_dunn(df_date, val_col="Value", group_col=treat_col, p_adjust="bonferroni")
-                # Simplified placeholder: assign 'a' for now
-                # TODO: implement LSD-based grouping
+                # --- Simple LSD grouping letters ---
+                sorted_means = means.sort_values(ascending=False)
+                groups = {}
+                current_group = "a"
+                groups[sorted_means.index[0]] = current_group
+                for i in range(1, len(sorted_means)):
+                    prev = sorted_means.index[i-1]
+                    curr = sorted_means.index[i]
+                    diff = abs(sorted_means[prev] - sorted_means[curr])
+                    if diff > lsd:
+                        # next letter
+                        current_group = chr(ord(current_group) + 1)
+                    groups[curr] = current_group
 
                 mean_col = f"{date} Mean"
                 group_col = f"{date} Group"
 
                 wide_table[mean_col] = wide_table["Treatment"].map(means)
-                wide_table[group_col] = "a"  # placeholder grouping
+                wide_table[group_col] = wide_table["Treatment"].map(groups)
 
-                # Add summary rows later
-                summary = pd.DataFrame({
-                    "Treatment": ["P", "LSD", "d.f.", "%CV"],
-                    mean_col: [p_val, lsd, df_error, cv],
-                    group_col: ["", "", "", ""]
-                })
+                summaries[date] = {"P": p_val, "LSD": lsd, "d.f.": df_error, "%CV": cv}
+
+            # Add summary rows
+            summary_rows = []
+            for metric in ["P", "LSD", "d.f.", "%CV"]:
+                row = {"Treatment": metric}
+                for date in sorted(df_sub["Date"].unique()):
+                    row[f"{date} Mean"] = summaries[date][metric]
+                    row[f"{date} Group"] = ""
+                summary_rows.append(row)
+            wide_table = pd.concat([wide_table, pd.DataFrame(summary_rows)], ignore_index=True)
 
             st.dataframe(wide_table)
-
             all_tables[assess] = wide_table
 
         # ---- Export section ----
@@ -197,7 +210,7 @@ if uploaded_file:
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             for assess, table in all_tables.items():
-                table.to_excel(writer, sheet_name=assess, index=False)
+                table.to_excel(writer, sheet_name=assess[:30], index=False)
         st.download_button(
             "Download Tables (Excel)",
             data=buffer,
@@ -213,5 +226,5 @@ if uploaded_file:
             mime="text/csv"
         )
 
-        # Export charts (PDF)
-        # TODO: export Plotly figs as PDF
+        # Export charts (PDF placeholder)
+        st.info("Exporting charts to PDF will be added next (using Plotly + Kaleido).")
