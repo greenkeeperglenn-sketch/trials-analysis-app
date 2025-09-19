@@ -7,4 +7,6 @@ seaborn
 openpyxl
 xlsxwriter
 plotly
+statsmodels
+scikit-posthocs
 
