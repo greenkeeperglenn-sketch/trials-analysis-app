@@ -94,10 +94,31 @@ if uploaded_file:
     else:
         data = pd.concat(all_data, ignore_index=True)
 
+        # Detect treatment column
+        treat_col = next((c for c in data.columns if re.search("treat|trt", c, re.I)))
+        treatments = sorted(data[treat_col].dropna().unique(), key=lambda x: int(x))
+
+        # --- Treatment naming option ---
+        st.subheader("Treatment Names")
+        st.markdown(
+            f"Detected **{len(treatments)} treatments**: {', '.join(map(str, treatments))}. "
+            "Paste names below (one per line, in order)."
+        )
+        names_input = st.text_area("Treatment names", height=200, placeholder="Paste names here, one per line")
+        treatment_name_map = {}
+        if names_input.strip():
+            pasted_names = [n.strip() for n in names_input.split("\n") if n.strip()]
+            if len(pasted_names) == len(treatments):
+                treatment_name_map = dict(zip(treatments, pasted_names))
+                data[treat_col] = data[treat_col].map(treatment_name_map).fillna(data[treat_col])
+                treatments = pasted_names  # update ordering
+            else:
+                st.warning("Number of names pasted does not match number of treatments!")
+
         # Let user select which assessments to analyse
         selected_assessments = st.multiselect(
             "Select assessments to analyse:",
-            sorted(assessment_cols)
+            sorted(set(data["Assessment"].unique()))
         )
 
         # Flip toggle
@@ -107,8 +128,6 @@ if uploaded_file:
         )
 
         # Fixed color mapping for treatments
-        treat_col = next((c for c in data.columns if re.search("treat|trt", c, re.I)))
-        treatments = sorted(data[treat_col].dropna().unique(), key=lambda x: int(x))
         color_map = {
             t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
             for i, t in enumerate(treatments)
@@ -146,49 +165,53 @@ if uploaded_file:
 
             # --- Stats Table ---
             wide_table = pd.DataFrame({"Treatment": treatments})
-
             summaries = {}
+
             for date in sorted(df_sub["Date"].unique()):
                 df_date = df_sub[df_sub["Date"] == date].rename(columns={treat_col: "Treatment"})
+                # Ensure Value numeric
+                df_date["Value"] = pd.to_numeric(df_date["Value"], errors="coerce")
+                df_date = df_date.dropna(subset=["Value"])
 
-                # Means
-                means = df_date.groupby("Treatment")["Value"].mean()
+                if df_date["Treatment"].nunique() > 1 and len(df_date) > 1:
+                    # Means
+                    means = df_date.groupby("Treatment")["Value"].mean()
 
-                # ANOVA
-                model = ols("Value ~ C(Treatment)", data=df_date).fit()
-                anova_table = sm.stats.anova_lm(model, typ=2)
-                p_val = anova_table["PR(>F)"][0]
-                df_error = model.df_resid
-                mse = anova_table["sum_sq"][-1] / df_error
+                    # ANOVA
+                    model = ols("Value ~ C(Treatment)", data=df_date).fit()
+                    anova_table = sm.stats.anova_lm(model, typ=2)
+                    p_val = anova_table["PR(>F)"][0]
+                    df_error = model.df_resid
+                    mse = anova_table["sum_sq"][-1] / df_error
 
-                # LSD calc
-                t_crit = stats.t.ppf(1 - alpha_choice/2, df_error)
-                lsd = t_crit * np.sqrt(2*mse/df_date["Treatment"].value_counts().min())
+                    # LSD calc
+                    t_crit = stats.t.ppf(1 - alpha_choice/2, df_error)
+                    lsd = t_crit * np.sqrt(2*mse/df_date["Treatment"].value_counts().min())
 
-                # %CV
-                cv = 100 * np.sqrt(mse) / means.mean()
+                    # %CV
+                    cv = 100 * np.sqrt(mse) / means.mean()
 
-                # --- Simple LSD grouping letters ---
-                sorted_means = means.sort_values(ascending=False)
-                groups = {}
-                current_group = "a"
-                groups[sorted_means.index[0]] = current_group
-                for i in range(1, len(sorted_means)):
-                    prev = sorted_means.index[i-1]
-                    curr = sorted_means.index[i]
-                    diff = abs(sorted_means[prev] - sorted_means[curr])
-                    if diff > lsd:
-                        # next letter
-                        current_group = chr(ord(current_group) + 1)
-                    groups[curr] = current_group
+                    # --- LSD grouping letters ---
+                    sorted_means = means.sort_values(ascending=False)
+                    groups = {}
+                    current_group = "a"
+                    groups[sorted_means.index[0]] = current_group
+                    for i in range(1, len(sorted_means)):
+                        prev = sorted_means.index[i-1]
+                        curr = sorted_means.index[i]
+                        diff = abs(sorted_means[prev] - sorted_means[curr])
+                        if diff > lsd:
+                            current_group = chr(ord(current_group) + 1)
+                        groups[curr] = current_group
 
-                mean_col = f"{date} Mean"
-                group_col = f"{date} Group"
+                    mean_col = f"{date} Mean"
+                    group_col = f"{date} Group"
+                    wide_table[mean_col] = wide_table["Treatment"].map(means)
+                    wide_table[group_col] = wide_table["Treatment"].map(groups)
 
-                wide_table[mean_col] = wide_table["Treatment"].map(means)
-                wide_table[group_col] = wide_table["Treatment"].map(groups)
-
-                summaries[date] = {"P": p_val, "LSD": lsd, "d.f.": df_error, "%CV": cv}
+                    summaries[date] = {"P": p_val, "LSD": lsd, "d.f.": df_error, "%CV": cv}
+                else:
+                    summaries[date] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
 
             # Add summary rows
             summary_rows = []
@@ -226,5 +249,4 @@ if uploaded_file:
             mime="text/csv"
         )
 
-        # Export charts (PDF placeholder)
         st.info("Exporting charts to PDF will be added next (using Plotly + Kaleido).")
