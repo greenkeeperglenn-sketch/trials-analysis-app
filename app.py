@@ -116,11 +116,9 @@ if uploaded_file:
             else:
                 fig = px.box(
                     df_sub,
-                    x=treat_col, y="Value", color=treat_col,
-                    color_discrete_map=color_map,
+                    x=treat_col, y="Value", color="Date",
                     category_orders={treat_col: treatments},
-                    facet_col="Date",
-                    title=f"{assess} grouped by Treatment (faceted by Date)"
+                    title=f"{assess} grouped by Treatment (colored by Date)"
                 )
 
             # Force true box & whisker (no scatter overlay)
