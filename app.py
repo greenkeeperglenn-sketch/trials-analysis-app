@@ -11,14 +11,13 @@ from statsmodels.formula.api import ols
 st.title("Assessment Data Explorer")
 
 # --- Significance level selector ---
-alpha_choice = st.radio(
-    "Select significance level:",
-    {
-        "Fungicide (0.005)": 0.005,
-        "Biologicals in lab (0.010)": 0.010,
-        "Biologicals in field (0.015)": 0.015
-    }
-)
+alpha_options = {
+    "Fungicide (0.005)": 0.005,
+    "Biologicals in lab (0.010)": 0.010,
+    "Biologicals in field (0.015)": 0.015
+}
+alpha_label = st.radio("Select significance level:", list(alpha_options.keys()))
+alpha_choice = alpha_options[alpha_label]
 
 # Upload Excel file
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
@@ -250,3 +249,4 @@ if uploaded_file:
         )
 
         st.info("Exporting charts to PDF will be added next (using Plotly + Kaleido).")
+
