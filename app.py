@@ -9,47 +9,53 @@ st.title("Assessment Data Explorer")
 # Upload Excel file
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 if uploaded_file:
-    # Load workbook
     xls = pd.ExcelFile(uploaded_file)
     all_data = []
     assessment_cols = set()
 
     for sheet in xls.sheet_names:
         try:
-            # Preview first 15 rows to detect header
-            preview = pd.read_excel(xls, sheet_name=sheet, nrows=15)
-            header_row = preview.index[
-                preview.astype(str).apply(lambda row: row.str.contains("Block", case=False, na=False)).any(axis=1)
-            ].tolist()
+            # Look at the first 20 rows to find header
+            preview = pd.read_excel(xls, sheet_name=sheet, nrows=20)
+            header_row = None
+            for i, row in preview.iterrows():
+                row_str = " ".join(str(v) for v in row.values)
+                if re.search("block", row_str, re.I) and re.search("treat", row_str, re.I):
+                    header_row = i
+                    break
 
-            if not header_row:
-                st.warning(f"No header row found in {sheet}, skipping.")
+            if header_row is None:
+                st.warning(f"No suitable header row found in {sheet}, skipping.")
                 continue
 
-            # Read sheet starting at detected header
-            df = pd.read_excel(xls, sheet_name=sheet, header=header_row[0])
+            # Read full sheet with detected header
+            df = pd.read_excel(xls, sheet_name=sheet, header=header_row)
 
-            # Drop empty columns
+            # Clean columns
             df = df.dropna(axis=1, how="all")
             df.columns = [str(c).strip() for c in df.columns]
 
-            # Identify key columns
-            block_col = next((c for c in df.columns if re.search("block", c, re.I)), None)
+            # Identify core columns flexibly
+            block_col = next((c for c in df.columns if re.search("block|blk", c, re.I)), None)
             plot_col = next((c for c in df.columns if re.search("plot", c, re.I)), None)
-            treat_col = next((c for c in df.columns if re.search("treat", c, re.I)), None)
+            treat_col = next((c for c in df.columns if re.search("treat|trt", c, re.I)), None)
 
             if not (block_col and treat_col):
                 st.warning(f"Missing key columns in {sheet}, skipping.")
                 continue
 
-            # Everything after treat_col = assessments
+            # Everything after treatment column = assessments
             treat_idx = df.columns.get_loc(treat_col)
             assess_list = df.columns[treat_idx+1:].tolist()
             assessment_cols.update(assess_list)
 
-            # Add date column (sheet name used as proxy for date)
+            # Reshape to tidy format
+            id_vars = [block_col, treat_col]
+            if plot_col:
+                id_vars.append(plot_col)
+
             df_long = df.melt(
-                id_vars=[block_col, plot_col, treat_col],
+                id_vars=id_vars,
                 value_vars=assess_list,
                 var_name="Assessment",
                 value_name="Value"
@@ -65,7 +71,7 @@ if uploaded_file:
     else:
         data = pd.concat(all_data, ignore_index=True)
 
-        # Let user select which assessments to analyse
+        # User selects assessments
         selected_assessments = st.multiselect(
             "Select assessments to analyse:",
             sorted(assessment_cols)
@@ -78,22 +84,21 @@ if uploaded_file:
         )
 
         # Fixed color mapping for treatments
-        treat_col = next((c for c in data.columns if re.search("treat", c, re.I)))
+        treat_col = next((c for c in data.columns if re.search("treat|trt", c, re.I)))
         treatments = sorted(data[treat_col].dropna().unique())
         color_map = {
-            t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)] 
+            t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
             for i, t in enumerate(treatments)
         }
 
         # Show plots + tables
         for assess in selected_assessments:
             st.subheader(f"Assessment: {assess}")
-
             df_sub = data[data["Assessment"] == assess].dropna(subset=["Value"])
 
             if view_mode.startswith("By Date"):
                 fig = px.box(
-                    df_sub, 
+                    df_sub,
                     x="Date", y="Value", color=treat_col,
                     color_discrete_map=color_map,
                     points="all",
@@ -101,7 +106,7 @@ if uploaded_file:
                 )
             else:
                 fig = px.box(
-                    df_sub, 
+                    df_sub,
                     x=treat_col, y="Value", color="Date",
                     points="all",
                     title=f"{assess} grouped by Treatment"
@@ -110,19 +115,11 @@ if uploaded_file:
             st.plotly_chart(fig, use_container_width=True)
             st.dataframe(df_sub)
 
-        # ---- Export tidy dataset ----
+        # ---- Download section ----
         st.subheader("Download Tidy Dataset")
-
-        # CSV export
         csv = data.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Download as CSV",
-            data=csv,
-            file_name="tidy_assessments.csv",
-            mime="text/csv"
-        )
+        st.download_button("Download as CSV", data=csv, file_name="tidy_assessments.csv", mime="text/csv")
 
-        # Excel export
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             data.to_excel(writer, index=False, sheet_name="Assessments")
