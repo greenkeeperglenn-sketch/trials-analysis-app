@@ -7,6 +7,7 @@ import numpy as np
 from scipy import stats
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
+from itertools import combinations
 
 st.title("Assessment Data Explorer")
 
@@ -19,16 +20,57 @@ alpha_options = {
 alpha_label = st.radio("Select significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
 
-# Upload Excel file
+# --- Helper: Compact Letter Display (CLD) from pairwise LSD ---
+def generate_cld(means, mse, df_error, alpha, rep_counts):
+    """Return dict of Treatment -> letters for compact letter display."""
+    treatments = means.index.tolist()
+    letters = {t: "" for t in treatments}
+
+    # pairwise comparisons
+    sig_matrix = pd.DataFrame(False, index=treatments, columns=treatments)
+    t_crit = stats.t.ppf(1 - alpha/2, df_error)
+
+    for t1, t2 in combinations(treatments, 2):
+        n1, n2 = rep_counts.get(t1, 1), rep_counts.get(t2, 1)
+        lsd = t_crit * np.sqrt(mse * (1/n1 + 1/n2))
+        diff = abs(means[t1] - means[t2])
+        if diff > lsd:
+            sig_matrix.loc[t1, t2] = True
+            sig_matrix.loc[t2, t1] = True
+
+    # Build CLD (basic greedy algorithm)
+    sorted_means = means.sort_values(ascending=False)
+    groups = []
+    for t in sorted_means.index:
+        placed = False
+        for g in groups:
+            if not any(sig_matrix.loc[t, other] for other in g):
+                g.append(t)
+                placed = True
+                break
+        if not placed:
+            groups.append([t])
+
+    # Assign letters
+    for i, g in enumerate(groups):
+        letter = chr(ord("a") + i)
+        for t in g:
+            letters[t] += letter
+
+    return letters
+
+# --- Upload Excel file ---
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
     all_data = []
     assessment_cols = set()
+    block_col_global = None
+    treat_col_global = None
 
     for sheet in xls.sheet_names:
         try:
-            # Look at the first 20 rows to find header row
+            # Look at first 20 rows to find header
             preview = pd.read_excel(xls, sheet_name=sheet, nrows=20)
             header_row = None
             for i, row in preview.iterrows():
@@ -41,37 +83,27 @@ if uploaded_file:
                 st.warning(f"No suitable header row found in {sheet}, skipping.")
                 continue
 
-            # Read full sheet, skipping up to header row
+            # Read full sheet
             df = pd.read_excel(xls, sheet_name=sheet, skiprows=header_row)
-
-            # Promote first row to header
             df.columns = df.iloc[0]
             df = df.drop(df.index[0])
-
-            # Drop empty columns
             df = df.dropna(axis=1, how="all")
             df.columns = [str(c).strip() for c in df.columns]
 
-            # ---- Robust column detection ----
             col_map = {c: re.sub(r"\W+", "", c).lower() for c in df.columns}
-
             block_col = next((orig for orig, norm in col_map.items() if "block" in norm), None)
             plot_col = next((orig for orig, norm in col_map.items() if "plot" in norm), None)
             treat_col = next((orig for orig, norm in col_map.items() if "treat" in norm or "trt" in norm), None)
 
             if not (block_col and treat_col):
-                st.warning(
-                    f"Sheet {sheet}: Could not detect Block/Treatment columns. "
-                    f"Detected columns: {list(df.columns)}"
-                )
+                st.warning(f"Sheet {sheet}: Could not detect Block/Treatment columns. Found {list(df.columns)}")
                 continue
 
-            # Everything after treatment column = assessments
+            block_col_global, treat_col_global = block_col, treat_col
             treat_idx = df.columns.get_loc(treat_col)
             assess_list = df.columns[treat_idx+1:].tolist()
             assessment_cols.update(assess_list)
 
-            # Reshape into tidy format
             id_vars = [block_col, treat_col]
             if plot_col:
                 id_vars.append(plot_col)
@@ -82,6 +114,7 @@ if uploaded_file:
                 var_name="Assessment",
                 value_name="Value"
             )
+            df_long = df_long.rename(columns={block_col: "Block", treat_col: "Treatment"})
             df_long["Date"] = sheet
             all_data.append(df_long)
 
@@ -93,40 +126,34 @@ if uploaded_file:
     else:
         data = pd.concat(all_data, ignore_index=True)
 
-        # Detect treatment column
-        treat_col = next((c for c in data.columns if re.search("treat|trt", c, re.I)))
-        treatments = sorted(data[treat_col].dropna().unique(), key=lambda x: int(x))
-
-        # --- Treatment naming option ---
+        # --- Treatment naming box ---
+        treatments = sorted(data["Treatment"].dropna().unique(), key=lambda x: str(x))
         st.subheader("Treatment Names")
         st.markdown(
             f"Detected **{len(treatments)} treatments**: {', '.join(map(str, treatments))}. "
             "Paste names below (one per line, in order)."
         )
         names_input = st.text_area("Treatment names", height=200, placeholder="Paste names here, one per line")
-        treatment_name_map = {}
         if names_input.strip():
             pasted_names = [n.strip() for n in names_input.split("\n") if n.strip()]
             if len(pasted_names) == len(treatments):
-                treatment_name_map = dict(zip(treatments, pasted_names))
-                data[treat_col] = data[treat_col].map(treatment_name_map).fillna(data[treat_col])
-                treatments = pasted_names  # update ordering
+                mapping = dict(zip(treatments, pasted_names))
+                data["Treatment"] = data["Treatment"].map(mapping).fillna(data["Treatment"])
+                treatments = pasted_names
             else:
                 st.warning("Number of names pasted does not match number of treatments!")
 
-        # Let user select which assessments to analyse
+        # --- User selects assessments ---
         selected_assessments = st.multiselect(
             "Select assessments to analyse:",
             sorted(set(data["Assessment"].unique()))
         )
 
-        # Flip toggle
         view_mode = st.radio(
             "How should boxplots be grouped?",
             ["By Date (treatments across dates)", "By Treatment (dates across treatments)"]
         )
 
-        # Fixed color mapping for treatments
         color_map = {
             t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
             for i, t in enumerate(treatments)
@@ -135,7 +162,6 @@ if uploaded_file:
         all_tables = {}
         all_figs = []
 
-        # Show plots + stats tables
         for assess in selected_assessments:
             st.subheader(f"Assessment: {assess}")
             df_sub = data[data["Assessment"] == assess].dropna(subset=["Value"])
@@ -144,21 +170,19 @@ if uploaded_file:
             if view_mode.startswith("By Date"):
                 fig = px.box(
                     df_sub,
-                    x="Date", y="Value", color=treat_col,
+                    x="Date", y="Value", color="Treatment",
                     color_discrete_map=color_map,
-                    category_orders={treat_col: treatments},
+                    category_orders={"Treatment": treatments},
                     title=f"{assess} grouped by Date"
                 )
             else:
                 fig = px.box(
                     df_sub,
-                    x=treat_col, y="Value", color="Date",
-                    category_orders={treat_col: treatments},
+                    x="Treatment", y="Value", color="Date",
+                    category_orders={"Treatment": treatments},
                     title=f"{assess} grouped by Treatment (colored by Date)"
                 )
-
             fig.update_traces(boxpoints=False)
-            fig.update_layout(boxmode="group")
             st.plotly_chart(fig, use_container_width=True)
             all_figs.append(fig)
 
@@ -167,48 +191,35 @@ if uploaded_file:
             summaries = {}
 
             for date in sorted(df_sub["Date"].unique()):
-                df_date = df_sub[df_sub["Date"] == date].rename(columns={treat_col: "Treatment"})
-                # Ensure Value numeric
+                df_date = df_sub[df_sub["Date"] == date].copy()
                 df_date["Value"] = pd.to_numeric(df_date["Value"], errors="coerce")
                 df_date = df_date.dropna(subset=["Value"])
 
                 if df_date["Treatment"].nunique() > 1 and len(df_date) > 1:
-                    # Means
                     means = df_date.groupby("Treatment")["Value"].mean()
+                    rep_counts = df_date["Treatment"].value_counts().to_dict()
 
-                    # ANOVA
-                    model = ols("Value ~ C(Treatment)", data=df_date).fit()
+                    # Model with/without Block
+                    if "Block" in df_date.columns:
+                        model = ols("Value ~ C(Treatment) + C(Block)", data=df_date).fit()
+                    else:
+                        model = ols("Value ~ C(Treatment)", data=df_date).fit()
                     anova_table = sm.stats.anova_lm(model, typ=2)
-                    p_val = anova_table["PR(>F)"][0]
                     df_error = model.df_resid
-                    mse = anova_table["sum_sq"][-1] / df_error
-
-                    # LSD calc
-                    t_crit = stats.t.ppf(1 - alpha_choice/2, df_error)
-                    lsd = t_crit * np.sqrt(2*mse/df_date["Treatment"].value_counts().min())
+                    mse = anova_table.loc["Residual", "sum_sq"] / df_error
+                    p_val = anova_table.loc["C(Treatment)", "PR(>F)"]
 
                     # %CV
                     cv = 100 * np.sqrt(mse) / means.mean()
 
-                    # --- LSD grouping letters ---
-                    sorted_means = means.sort_values(ascending=False)
-                    groups = {}
-                    current_group = "a"
-                    groups[sorted_means.index[0]] = current_group
-                    for i in range(1, len(sorted_means)):
-                        prev = sorted_means.index[i-1]
-                        curr = sorted_means.index[i]
-                        diff = abs(sorted_means[prev] - sorted_means[curr])
-                        if diff > lsd:
-                            current_group = chr(ord(current_group) + 1)
-                        groups[curr] = current_group
+                    # Letters via CLD
+                    letters = generate_cld(means, mse, df_error, alpha_choice, rep_counts)
 
-                    mean_col = f"{date} Mean"
-                    group_col = f"{date} Group"
+                    mean_col, group_col = f"{date} Mean", f"{date} Group"
                     wide_table[mean_col] = wide_table["Treatment"].map(means)
-                    wide_table[group_col] = wide_table["Treatment"].map(groups)
+                    wide_table[group_col] = wide_table["Treatment"].map(letters)
 
-                    summaries[date] = {"P": p_val, "LSD": lsd, "d.f.": df_error, "%CV": cv}
+                    summaries[date] = {"P": p_val, "LSD": "-", "d.f.": df_error, "%CV": cv}
                 else:
                     summaries[date] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
 
@@ -225,10 +236,8 @@ if uploaded_file:
             st.dataframe(wide_table)
             all_tables[assess] = wide_table
 
-        # ---- Export section ----
+        # --- Export Tables ---
         st.subheader("Export Results")
-
-        # Export tables
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             for assess, table in all_tables.items():
@@ -239,16 +248,3 @@ if uploaded_file:
             file_name="assessment_tables.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
-        csv_data = "\n\n".join([df.to_csv(index=False) for df in all_tables.values()]).encode("utf-8")
-        st.download_button(
-            "Download Tables (CSV)",
-            data=csv_data,
-            file_name="assessment_tables.csv",
-            mime="text/csv"
-        )
-
-        st.info("Exporting charts to PDF will be added next (using Plotly + Kaleido).")
-
-
-
