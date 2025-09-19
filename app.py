@@ -19,8 +19,8 @@ if uploaded_file:
             preview = pd.read_excel(xls, sheet_name=sheet, nrows=20)
             header_row = None
             for i, row in preview.iterrows():
-                row_str = " ".join(str(v) for v in row.values)
-                if re.search("block", row_str, re.I) and re.search("treat", row_str, re.I):
+                values = [str(v).lower() for v in row.values if pd.notna(v)]
+                if any("block" in v for v in values) and any("treat" in v for v in values):
                     header_row = i
                     break
 
