@@ -12,9 +12,10 @@ st.title("Assessment Data Explorer")
 
 # --- Significance level selector ---
 alpha_options = {
-    "Fungicide (0.005)": 0.005,
-    "Biologicals in lab (0.010)": 0.010,
-    "Biologicals in field (0.015)": 0.015
+    "Fungicide (0.05)": 0.05,
+    "Biologicals in lab (0.10)": 0.10,
+    "Biologicals in field (0.15)": 0.15
+}
 }
 alpha_label = st.radio("Select significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
@@ -249,4 +250,5 @@ if uploaded_file:
         )
 
         st.info("Exporting charts to PDF will be added next (using Plotly + Kaleido).")
+
 
