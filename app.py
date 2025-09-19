@@ -43,7 +43,10 @@ if uploaded_file:
             treat_col = next((orig for orig, norm in col_map.items() if "treat" in norm or "trt" in norm), None)
 
             if not (block_col and treat_col):
-                st.warning(f"Missing key columns in {sheet}, skipping.")
+                st.warning(
+                    f"Sheet {sheet}: Could not detect Block/Treatment columns. "
+                    f"Detected columns: {list(df.columns)}"
+                )
                 continue
 
             # Everything after treatment column = assessments
