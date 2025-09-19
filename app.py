@@ -28,8 +28,12 @@ if uploaded_file:
                 st.warning(f"No suitable header row found in {sheet}, skipping.")
                 continue
 
-            # Read full sheet with detected header
-            df = pd.read_excel(xls, sheet_name=sheet, header=header_row)
+            # Read full sheet, skipping up to header row
+            df = pd.read_excel(xls, sheet_name=sheet, skiprows=header_row)
+
+            # Promote first row to header
+            df.columns = df.iloc[0]
+            df = df.drop(df.index[0])
 
             # Drop empty columns
             df = df.dropna(axis=1, how="all")
