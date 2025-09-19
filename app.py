@@ -3,8 +3,23 @@ import pandas as pd
 import plotly.express as px
 import re
 from io import BytesIO
+import numpy as np
+from scipy import stats
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import scikit_posthocs as sp
 
 st.title("Assessment Data Explorer")
+
+# --- Significance level selector ---
+alpha_choice = st.radio(
+    "Select significance level:",
+    {
+        "Fungicide (0.005)": 0.005,
+        "Biologicals in lab (0.010)": 0.010,
+        "Biologicals in field (0.015)": 0.015
+    }
+)
 
 # Upload Excel file
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
@@ -100,38 +115,15 @@ if uploaded_file:
             for i, t in enumerate(treatments)
         }
 
-        # Fixed color mapping for treatments
-        treat_col = next((c for c in data.columns if re.search("treat|trt", c, re.I)))
-        treatments = sorted(data[treat_col].dropna().unique(), key=lambda x: int(x))
-        color_map = {
-            t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
-            for i, t in enumerate(treatments)
-        }
+        all_tables = {}
+        all_figs = []
 
-        # --- NEW: Treatment naming option ---
-        st.subheader("Treatment Names")
-        st.markdown(
-            f"Detected **{len(treatments)} treatments**: {', '.join(map(str, treatments))}. "
-            "Paste names below (one per line, in order)."
-        )
-        names_input = st.text_area("Treatment names", height=200, placeholder="Paste names here, one per line")
-        treatment_name_map = {}
-
-        if names_input.strip():
-            pasted_names = [n.strip() for n in names_input.split("\n") if n.strip()]
-            if len(pasted_names) == len(treatments):
-                treatment_name_map = dict(zip(treatments, pasted_names))
-                # Replace treatment column values with names
-                data[treat_col] = data[treat_col].map(treatment_name_map).fillna(data[treat_col])
-            else:
-                st.warning("Number of names pasted does not match number of treatments!")
-
-        
-        # Show plots
+        # Show plots + stats tables
         for assess in selected_assessments:
             st.subheader(f"Assessment: {assess}")
             df_sub = data[data["Assessment"] == assess].dropna(subset=["Value"])
 
+            # --- Boxplot ---
             if view_mode.startswith("By Date"):
                 fig = px.box(
                     df_sub,
@@ -148,24 +140,78 @@ if uploaded_file:
                     title=f"{assess} grouped by Treatment (colored by Date)"
                 )
 
-            # Force true box & whisker (no scatter overlay)
             fig.update_traces(boxpoints=False)
             fig.update_layout(boxmode="group")
-
             st.plotly_chart(fig, use_container_width=True)
+            all_figs.append(fig)
 
-        # ---- Download section ----
-        st.subheader("Download Tidy Dataset")
-        csv = data.to_csv(index=False).encode("utf-8")
-        st.download_button("Download as CSV", data=csv, file_name="tidy_assessments.csv", mime="text/csv")
+            # --- Stats Table ---
+            wide_table = pd.DataFrame({ "Treatment": treatments })
 
+            for date in sorted(df_sub["Date"].unique()):
+                df_date = df_sub[df_sub["Date"] == date]
+
+                # Means
+                means = df_date.groupby(treat_col)["Value"].mean()
+
+                # ANOVA
+                model = ols("Value ~ C("+treat_col+")", data=df_date).fit()
+                anova_table = sm.stats.anova_lm(model, typ=2)
+                p_val = anova_table["PR(>F)"][0]
+                df_error = model.df_resid
+                mse = anova_table["sum_sq"][-1] / df_error
+
+                # LSD calc
+                t_crit = stats.t.ppf(1 - alpha_choice/2, df_error)
+                lsd = t_crit * np.sqrt(2*mse/df_date[treat_col].value_counts().min())
+
+                # %CV
+                cv = 100 * np.sqrt(mse) / means.mean()
+
+                # Grouping letters
+                letters = sp.posthoc_dunn(df_date, val_col="Value", group_col=treat_col, p_adjust="bonferroni")
+                # Simplified placeholder: assign 'a' for now
+                # TODO: implement LSD-based grouping
+
+                mean_col = f"{date} Mean"
+                group_col = f"{date} Group"
+
+                wide_table[mean_col] = wide_table["Treatment"].map(means)
+                wide_table[group_col] = "a"  # placeholder grouping
+
+                # Add summary rows later
+                summary = pd.DataFrame({
+                    "Treatment": ["P", "LSD", "d.f.", "%CV"],
+                    mean_col: [p_val, lsd, df_error, cv],
+                    group_col: ["", "", "", ""]
+                })
+
+            st.dataframe(wide_table)
+
+            all_tables[assess] = wide_table
+
+        # ---- Export section ----
+        st.subheader("Export Results")
+
+        # Export tables
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            data.to_excel(writer, index=False, sheet_name="Assessments")
+            for assess, table in all_tables.items():
+                table.to_excel(writer, sheet_name=assess, index=False)
         st.download_button(
-            "Download as Excel",
+            "Download Tables (Excel)",
             data=buffer,
-            file_name="tidy_assessments.xlsx",
+            file_name="assessment_tables.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
+        csv_data = "\n\n".join([df.to_csv(index=False) for df in all_tables.values()]).encode("utf-8")
+        st.download_button(
+            "Download Tables (CSV)",
+            data=csv_data,
+            file_name="assessment_tables.csv",
+            mime="text/csv"
+        )
+
+        # Export charts (PDF)
+        # TODO: export Plotly figs as PDF
