@@ -16,7 +16,6 @@ alpha_options = {
     "Biologicals in lab (0.10)": 0.10,
     "Biologicals in field (0.15)": 0.15
 }
-}
 alpha_label = st.radio("Select significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
 
@@ -250,5 +249,6 @@ if uploaded_file:
         )
 
         st.info("Exporting charts to PDF will be added next (using Plotly + Kaleido).")
+
 
 
