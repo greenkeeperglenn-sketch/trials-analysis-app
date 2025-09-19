@@ -100,6 +100,33 @@ if uploaded_file:
             for i, t in enumerate(treatments)
         }
 
+        # Fixed color mapping for treatments
+        treat_col = next((c for c in data.columns if re.search("treat|trt", c, re.I)))
+        treatments = sorted(data[treat_col].dropna().unique(), key=lambda x: int(x))
+        color_map = {
+            t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
+            for i, t in enumerate(treatments)
+        }
+
+        # --- NEW: Treatment naming option ---
+        st.subheader("Treatment Names")
+        st.markdown(
+            f"Detected **{len(treatments)} treatments**: {', '.join(map(str, treatments))}. "
+            "Paste names below (one per line, in order)."
+        )
+        names_input = st.text_area("Treatment names", height=200, placeholder="Paste names here, one per line")
+        treatment_name_map = {}
+
+        if names_input.strip():
+            pasted_names = [n.strip() for n in names_input.split("\n") if n.strip()]
+            if len(pasted_names) == len(treatments):
+                treatment_name_map = dict(zip(treatments, pasted_names))
+                # Replace treatment column values with names
+                data[treat_col] = data[treat_col].map(treatment_name_map).fillna(data[treat_col])
+            else:
+                st.warning("Number of names pasted does not match number of treatments!")
+
+        
         # Show plots
         for assess in selected_assessments:
             st.subheader(f"Assessment: {assess}")
@@ -141,3 +168,4 @@ if uploaded_file:
             file_name="tidy_assessments.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
