@@ -15,7 +15,7 @@ if uploaded_file:
 
     for sheet in xls.sheet_names:
         try:
-            # Look at the first 20 rows to find header
+            # Look at the first 20 rows to find header row
             preview = pd.read_excel(xls, sheet_name=sheet, nrows=20)
             header_row = None
             for i, row in preview.iterrows():
@@ -31,14 +31,16 @@ if uploaded_file:
             # Read full sheet with detected header
             df = pd.read_excel(xls, sheet_name=sheet, header=header_row)
 
-            # Clean columns
+            # Drop empty columns
             df = df.dropna(axis=1, how="all")
             df.columns = [str(c).strip() for c in df.columns]
 
-            # Identify core columns flexibly
-            block_col = next((c for c in df.columns if re.search("block|blk", c, re.I)), None)
-            plot_col = next((c for c in df.columns if re.search("plot", c, re.I)), None)
-            treat_col = next((c for c in df.columns if re.search("treat|trt", c, re.I)), None)
+            # ---- Robust column detection ----
+            col_map = {c: re.sub(r"\W+", "", c).lower() for c in df.columns}
+
+            block_col = next((orig for orig, norm in col_map.items() if "block" in norm), None)
+            plot_col = next((orig for orig, norm in col_map.items() if "plot" in norm), None)
+            treat_col = next((orig for orig, norm in col_map.items() if "treat" in norm or "trt" in norm), None)
 
             if not (block_col and treat_col):
                 st.warning(f"Missing key columns in {sheet}, skipping.")
@@ -49,7 +51,7 @@ if uploaded_file:
             assess_list = df.columns[treat_idx+1:].tolist()
             assessment_cols.update(assess_list)
 
-            # Reshape to tidy format
+            # Reshape into tidy format
             id_vars = [block_col, treat_col]
             if plot_col:
                 id_vars.append(plot_col)
@@ -71,7 +73,7 @@ if uploaded_file:
     else:
         data = pd.concat(all_data, ignore_index=True)
 
-        # User selects assessments
+        # Let user select which assessments to analyse
         selected_assessments = st.multiselect(
             "Select assessments to analyse:",
             sorted(assessment_cols)
