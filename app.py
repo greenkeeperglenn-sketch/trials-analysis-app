@@ -94,13 +94,13 @@ if uploaded_file:
 
         # Fixed color mapping for treatments
         treat_col = next((c for c in data.columns if re.search("treat|trt", c, re.I)))
-        treatments = sorted(data[treat_col].dropna().unique())
+        treatments = sorted(data[treat_col].dropna().unique(), key=lambda x: int(x))
         color_map = {
             t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
             for i, t in enumerate(treatments)
         }
 
-        # Show plots + tables
+        # Show plots
         for assess in selected_assessments:
             st.subheader(f"Assessment: {assess}")
             df_sub = data[data["Assessment"] == assess].dropna(subset=["Value"])
@@ -110,19 +110,24 @@ if uploaded_file:
                     df_sub,
                     x="Date", y="Value", color=treat_col,
                     color_discrete_map=color_map,
-                    points="all",
+                    category_orders={treat_col: treatments},
                     title=f"{assess} grouped by Date"
                 )
             else:
                 fig = px.box(
                     df_sub,
-                    x=treat_col, y="Value", color="Date",
-                    points="all",
-                    title=f"{assess} grouped by Treatment"
+                    x=treat_col, y="Value", color=treat_col,
+                    color_discrete_map=color_map,
+                    category_orders={treat_col: treatments},
+                    facet_col="Date",
+                    title=f"{assess} grouped by Treatment (faceted by Date)"
                 )
 
+            # Force true box & whisker (no scatter overlay)
+            fig.update_traces(boxpoints=False)
+            fig.update_layout(boxmode="group")
+
             st.plotly_chart(fig, use_container_width=True)
-            st.dataframe(df_sub)
 
         # ---- Download section ----
         st.subheader("Download Tidy Dataset")
