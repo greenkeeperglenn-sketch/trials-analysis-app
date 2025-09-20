@@ -14,21 +14,33 @@ st.set_page_config(layout="wide")
 st.title("Assessment Data Explorer")
 
 # ======================
-# UI: Significance level
+# Sidebar controls
 # ======================
+st.sidebar.header("Global Settings")
+
 alpha_options = {
     "Fungicide (0.05)": 0.05,
     "Biologicals in lab (0.10)": 0.10,
     "Biologicals in field (0.15)": 0.15
 }
-alpha_label = st.radio("Select significance level:", list(alpha_options.keys()))
+alpha_label = st.sidebar.radio("Significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
+
+view_mode = st.sidebar.radio("Boxplot grouping:", ["By Date", "By Treatment"])
+
+global_a_is_lowest = (
+    st.sidebar.radio(
+        "Lettering convention:",
+        ["Lowest = A", "Highest = A"],
+        index=0,
+        key="letters_global"
+    ) == "Lowest = A"
+)
 
 # ======================
 # Helpers
 # ======================
 def parse_sheet_label_to_date(label: str):
-    """Try to parse a sheet name into a datetime for sorting."""
     for dayfirst in (True, False):
         dt = pd.to_datetime(label, errors="coerce", dayfirst=dayfirst)
         if pd.notna(dt):
@@ -36,7 +48,6 @@ def parse_sheet_label_to_date(label: str):
     return None
 
 def chronological_labels(labels):
-    """Sort labels chronologically when possible."""
     pairs = []
     for lab in labels:
         dt = parse_sheet_label_to_date(lab)
@@ -48,14 +59,9 @@ def chronological_labels(labels):
     return [p[0] for p in pairs_sorted]
 
 def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=True):
-    """
-    Agricolae-style CLD with overlaps (ab, bc).
-    Deduplicates letters so outputs are clean (no 'aa' or 'bb').
-    """
     trts = list(means.index)
     letters = {t: set() for t in trts}
 
-    # --- Build NSD matrix ---
     nsd = pd.DataFrame(False, index=trts, columns=trts)
     for t in trts:
         nsd.loc[t, t] = True
@@ -69,7 +75,6 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
                 nsd.loc[a, b] = True
                 nsd.loc[b, a] = True
 
-    # --- Assign groups with back-fill closure ---
     order = means.sort_values(ascending=a_is_lowest).index
     groups = []
     next_letter_code = ord("a")
@@ -87,7 +92,6 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
             letters[t].add(new_letter)
             next_letter_code += 1
 
-        # --- Back-fill step ---
         changed = True
         while changed:
             changed = False
@@ -103,7 +107,6 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
     return letters, nsd
 
 def rotate_headers(df):
-    """Apply header rotation + small font via Styler, with rounding."""
     return (df.style
               .set_table_styles(
                   [{"selector": "th.col_heading",
@@ -113,7 +116,7 @@ def rotate_headers(df):
                               ("font-size", "10px"),
                               ("white-space", "nowrap")]}]
               )
-              .format(precision=1)  # Force 1 decimal place in display
+              .format(precision=1)
            )
 
 # ======================
@@ -189,9 +192,7 @@ if uploaded_file:
             else:
                 st.warning("Number of names pasted does not match detected treatments!")
 
-        # Assessment selector
         selected_assessments = st.multiselect("Select assessments:", sorted(set(data["Assessment"].unique())))
-        view_mode = st.radio("How should boxplots be grouped?", ["By Date", "By Treatment"])
 
         color_map = {t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)] for i, t in enumerate(treatments)}
         date_labels_all = data["DateLabel"].dropna().unique().tolist()
@@ -204,7 +205,7 @@ if uploaded_file:
             df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
             df_sub = df_sub.dropna(subset=["Value"])
 
-            # --- Block selector applied BEFORE plotting ---
+            # Block selector (before plotting)
             if "Block" in df_sub.columns:
                 blocks = sorted(df_sub["Block"].dropna().unique())
                 sel_blocks = st.multiselect(
@@ -218,7 +219,7 @@ if uploaded_file:
                     continue
                 df_sub = df_sub[df_sub["Block"].isin(sel_blocks)]
 
-            # --- Boxplot ---
+            # Boxplot
             if view_mode == "By Date":
                 fig = px.box(df_sub, x="DateLabel", y="Value", color="Treatment",
                              color_discrete_map=color_map,
@@ -229,7 +230,7 @@ if uploaded_file:
             fig.update_traces(boxpoints=False)
             st.plotly_chart(fig, use_container_width=True)
 
-            # --- Stats table ---
+            # Stats table
             wide_table = pd.DataFrame({"Treatment": treatments})
             summaries = {}
             nsd_debug = {}
@@ -260,17 +261,10 @@ if uploaded_file:
                         df_error, mse, p_val = np.nan, np.nan, np.nan
                     cv = 100 * np.sqrt(mse) / means.mean() if pd.notna(mse) and means.mean() != 0 else np.nan
 
-                    # --- Lettering toggle (unique key per assessment + date) ---
-                    a_is_lowest = (
-                        st.radio(
-                            f"Lettering convention for {assess} ({date_label})",
-                            ["Lowest = A", "Highest = A"],
-                            index=0,
-                            key=f"letters_{assess.replace(' ', '_')}_{date_label.replace(' ', '_')}"
-                        ) == "Lowest = A"
+                    letters, nsd = generate_cld_overlap(
+                        means, mse, df_error, alpha_choice, rep_counts,
+                        a_is_lowest=global_a_is_lowest
                     )
-
-                    letters, nsd = generate_cld_overlap(means, mse, df_error, alpha_choice, rep_counts, a_is_lowest=a_is_lowest)
                     nsd_debug[date_label] = nsd
                     n_avg = np.mean(list(rep_counts.values()))
                     lsd_val = stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/n_avg) if pd.notna(mse) else np.nan
