@@ -9,6 +9,8 @@ import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from itertools import combinations
 
+# Use full browser width
+st.set_page_config(layout="wide")
 st.title("Assessment Data Explorer")
 
 # ======================
@@ -268,17 +270,16 @@ if uploaded_file:
             # Round all numeric values to 1 decimal
             wide_table = wide_table.round(1)
 
-            # Apply styling: rotate headers
-            def rotate_headers(df):
-                return df.style.set_table_styles(
-                    [{"selector": "th.col_heading",
-                      "props": [("transform", "rotate(90deg)"),
-                                ("text-align", "left"),
-                                ("vertical-align", "bottom"),
-                                ("white-space", "nowrap")]}]
-                )
+            # Rotate headers & pin Treatment column
+            st.dataframe(
+                wide_table,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Treatment": st.column_config.Column(pinned=True)
+                }
+            )
 
-            st.dataframe(rotate_headers(wide_table), use_container_width=True)
             all_tables[assess] = wide_table
 
             # Debug NSD matrix
