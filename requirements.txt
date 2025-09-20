@@ -8,6 +8,7 @@ openpyxl
 xlsxwriter
 plotly
 statsmodels
-scikit-posthocs
 python-docx
+kaleido
+
 
