@@ -61,9 +61,10 @@ def lsd_value(mse, df_error, alpha, n1, n2):
 def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=True):
     """
     Agricolae-style CLD with overlaps (ab, bc).
+    Deduplicates letters so outputs are clean (no 'aa' or 'bb').
     """
     trts = list(means.index)
-    letters = {t: "" for t in trts}
+    letters = {t: set() for t in trts}  # store as sets for deduplication
 
     # --- Build NSD matrix ---
     nsd = pd.DataFrame(False, index=trts, columns=trts)
@@ -88,13 +89,13 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
         joined_any = False
         for g in groups:
             if all(nsd.loc[t, m] for m in g["members"]):
-                letters[t] += g["letter"]
+                letters[t].add(g["letter"])
                 g["members"].append(t)
                 joined_any = True
         if not joined_any:
             new_letter = chr(next_letter_code)
             groups.append({"letter": new_letter, "members": [t]})
-            letters[t] += new_letter
+            letters[t].add(new_letter)
             next_letter_code += 1
 
         # --- Back-fill step ---
@@ -105,10 +106,12 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
                 for cand in trts:
                     if g["letter"] not in letters[cand]:
                         if all(nsd.loc[cand, m] for m in g["members"]):
-                            letters[cand] += g["letter"]
+                            letters[cand].add(g["letter"])
                             g["members"].append(cand)
                             changed = True
 
+    # Convert sets → sorted strings
+    letters = {t: "".join(sorted(v)) for t, v in letters.items()}
     return letters, nsd
 
 # ======================
