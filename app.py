@@ -51,39 +51,35 @@ def chronological_labels(labels):
     )
     return [p[0] for p in pairs_sorted]
 
-def lsd_value(mse, df_error, alpha, r):
-    """LSD using equal-reps formula with r = average reps per treatment."""
-    if df_error <= 0 or mse < 0 or r <= 0:
+def lsd_value(mse, df_error, alpha, n1, n2):
+    """Pairwise LSD for unequal replications."""
+    if df_error <= 0 or mse < 0:
         return np.nan
     t_crit = stats.t.ppf(1 - alpha/2, df_error)
-    return t_crit * np.sqrt(2 * mse / r)
+    return t_crit * np.sqrt(mse * (1/n1 + 1/n2))
 
-def build_nsd_matrix(means: pd.Series, mse: float, df_error: float, alpha: float, rep_counts: dict):
-    """NSD[i,j] = True if |mean_i - mean_j| <= LSD(i,j)."""
+def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=True):
+    """
+    Agricolae-style CLD with overlaps (ab, bc).
+    """
     trts = list(means.index)
+    letters = {t: "" for t in trts}
+
+    # --- Build NSD matrix ---
     nsd = pd.DataFrame(False, index=trts, columns=trts)
     for t in trts:
         nsd.loc[t, t] = True
     t_crit = stats.t.ppf(1 - alpha/2, df_error) if df_error > 0 else np.nan
-    if np.isnan(t_crit) or mse < 0:
-        return nsd
     for a, b in combinations(trts, 2):
         n1, n2 = rep_counts.get(a, 1), rep_counts.get(b, 1)
-        r_pair = np.mean([n1, n2]) if (n1 > 0 and n2 > 0) else 1.0
-        lsd_pair = t_crit * np.sqrt(2 * mse / r_pair)
-        diff = abs(means[a] - means[b])
-        if diff <= lsd_pair:
-            nsd.loc[a, b] = True
-            nsd.loc[b, a] = True
-    return nsd
+        if n1 > 0 and n2 > 0 and pd.notna(mse) and pd.notna(t_crit):
+            lsd_pair = t_crit * np.sqrt(mse * (1/n1 + 1/n2))
+            diff = abs(means[a] - means[b])
+            if diff <= lsd_pair:
+                nsd.loc[a, b] = True
+                nsd.loc[b, a] = True
 
-def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=True):
-    """
-    Agricolae-style overlapping CLD.
-    """
-    trts = list(means.index)
-    letters = {t: "" for t in trts}
-    nsd = build_nsd_matrix(means, mse, df_error, alpha, rep_counts)
+    # --- Assign groups with back-fill closure ---
     order = means.sort_values(ascending=a_is_lowest).index
     groups = []
     next_letter_code = ord("a")
@@ -91,7 +87,7 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
     for t in order:
         joined_any = False
         for g in groups:
-            if any(nsd.loc[t, m] for m in g["members"]):
+            if all(nsd.loc[t, m] for m in g["members"]):
                 letters[t] += g["letter"]
                 g["members"].append(t)
                 joined_any = True
@@ -100,7 +96,20 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
             groups.append({"letter": new_letter, "members": [t]})
             letters[t] += new_letter
             next_letter_code += 1
-    return letters
+
+        # --- Back-fill step ---
+        changed = True
+        while changed:
+            changed = False
+            for g in groups:
+                for cand in trts:
+                    if g["letter"] not in letters[cand]:
+                        if all(nsd.loc[cand, m] for m in g["members"]):
+                            letters[cand] += g["letter"]
+                            g["members"].append(cand)
+                            changed = True
+
+    return letters, nsd
 
 # ======================
 # Upload & Parse
@@ -121,7 +130,6 @@ if uploaded_file:
                     header_row = i
                     break
             if header_row is None:
-                st.warning(f"No suitable header row found in {sheet}, skipping.")
                 continue
 
             df = pd.read_excel(xls, sheet_name=sheet, skiprows=header_row)
@@ -135,7 +143,6 @@ if uploaded_file:
             plot_col  = next((o for o, n in col_map.items() if "plot"  in n), None)
             treat_col = next((o for o, n in col_map.items() if "treat" in n or "trt" in n), None)
             if not (block_col and treat_col):
-                st.warning(f"Sheet {sheet}: Could not detect Block/Treatment columns.")
                 continue
 
             treat_idx = df.columns.get_loc(treat_col)
@@ -156,8 +163,8 @@ if uploaded_file:
             df_long["DateLabel"] = sheet
             df_long["DateParsed"] = parse_sheet_label_to_date(sheet)
             all_data.append(df_long)
-        except Exception as e:
-            st.warning(f"Could not parse sheet {sheet}: {e}")
+        except Exception:
+            continue
 
     if not all_data:
         st.error("No valid tables found in this file.")
@@ -167,8 +174,7 @@ if uploaded_file:
         # Treatment naming
         treatments = sorted(data["Treatment"].dropna().unique(), key=lambda x: str(x))
         st.subheader("Treatment Names")
-        st.markdown(f"Detected {len(treatments)} treatments.")
-        names_input = st.text_area("Treatment names", height=200)
+        names_input = st.text_area("Paste treatment names (one per line)", height=200)
         if names_input.strip():
             pasted = [n.strip() for n in names_input.split("\n") if n.strip()]
             if len(pasted) == len(treatments):
@@ -176,7 +182,7 @@ if uploaded_file:
                 data["Treatment"] = data["Treatment"].map(mapping).fillna(data["Treatment"])
                 treatments = pasted
             else:
-                st.warning("Number of names pasted does not match number of treatments!")
+                st.warning("Number of names pasted does not match detected treatments!")
 
         # Block selector
         if "Block" in data.columns:
@@ -213,6 +219,8 @@ if uploaded_file:
             # Stats table
             wide_table = pd.DataFrame({"Treatment": treatments})
             summaries = {}
+            nsd_debug = {}
+
             for date_label in date_labels_ordered:
                 df_date = df_sub[df_sub["DateLabel"] == date_label].copy()
                 if df_date.empty:
@@ -239,9 +247,11 @@ if uploaded_file:
                         df_error, mse, p_val = np.nan, np.nan, np.nan
                     cv = 100 * np.sqrt(mse) / means.mean() if pd.notna(mse) and means.mean() != 0 else np.nan
                     a_is_lowest = (lettering_mode == "Lowest = A")
-                    letters = generate_cld_overlap(means, mse, df_error, alpha_choice, rep_counts, a_is_lowest=a_is_lowest)
-                    r = np.mean(list(rep_counts.values()))
-                    lsd_val = lsd_value(mse, df_error, alpha_choice, r)
+                    letters, nsd = generate_cld_overlap(means, mse, df_error, alpha_choice, rep_counts, a_is_lowest=a_is_lowest)
+                    nsd_debug[date_label] = nsd
+                    # LSD using average reps
+                    n_avg = np.mean(list(rep_counts.values()))
+                    lsd_val = stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/n_avg) if pd.notna(mse) else np.nan
                     wide_table[f"{date_label} Mean"] = wide_table["Treatment"].map(means)
                     wide_table[f"{date_label} Group"] = wide_table["Treatment"].map(letters).fillna("")
                     summaries[date_label] = {"P": p_val, "LSD": lsd_val, "d.f.": df_error, "%CV": cv}
@@ -261,6 +271,13 @@ if uploaded_file:
 
             st.dataframe(wide_table)
             all_tables[assess] = wide_table
+
+            # Debug NSD matrix
+            with st.expander(f"NSD Matrix ({assess})"):
+                for date_label, nsd in nsd_debug.items():
+                    st.markdown(f"**{date_label}**")
+                    nsd_display = nsd.replace({True: "✓", False: "×"})
+                    st.dataframe(nsd_display)
 
         # Export
         buffer = BytesIO()
