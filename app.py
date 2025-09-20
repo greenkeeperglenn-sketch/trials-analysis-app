@@ -252,8 +252,15 @@ if uploaded_file:
                         df_error, mse, p_val = np.nan, np.nan, np.nan
                     cv = 100 * np.sqrt(mse) / means.mean() if pd.notna(mse) and means.mean() != 0 else np.nan
                     # Lettering toggle (moved under stats table)
-                    a_is_lowest = (st.radio("Lettering convention:", ["Lowest = A", "Highest = A"],
-                                             index=0, key=f"letters_{assess}") == "Lowest = A")
+              a_is_lowest = (
+    st.radio(
+        f"Lettering convention for {assess}",   # unique label
+        ["Lowest = A", "Highest = A"],
+        index=0,
+        key=f"letters_{assess.replace(' ', '_')}"
+    ) == "Lowest = A"
+)
+
                     letters, nsd = generate_cld_overlap(means, mse, df_error, alpha_choice, rep_counts, a_is_lowest=a_is_lowest)
                     nsd_debug[date_label] = nsd
                     n_avg = np.mean(list(rep_counts.values()))
@@ -300,3 +307,4 @@ if uploaded_file:
         st.download_button("Download Tables (Excel)", data=buffer,
                            file_name="assessment_tables.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
