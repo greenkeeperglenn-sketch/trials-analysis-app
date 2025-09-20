@@ -20,39 +20,38 @@ alpha_options = {
 alpha_label = st.radio("Select significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
 
-# --- Helper: Compact Letter Display (CLD) from pairwise LSD ---
+# --- Helper: Compact Letter Display (CLD) with overlaps ---
 def generate_cld(means, mse, df_error, alpha, rep_counts):
     treatments = means.index.tolist()
-    letters = {t: "" for t in treatments}
-    sig_matrix = pd.DataFrame(False, index=treatments, columns=treatments)
     t_crit = stats.t.ppf(1 - alpha/2, df_error)
 
+    # Build "not significantly different" matrix
+    ns_matrix = pd.DataFrame(False, index=treatments, columns=treatments)
     for t1, t2 in combinations(treatments, 2):
         n1, n2 = rep_counts.get(t1, 1), rep_counts.get(t2, 1)
-        # Use per-treatment replicate counts for comparisons
-        lsd = t_crit * np.sqrt(mse * (1/n1 + 1/n2))
+        r = np.mean([n1, n2])
+        lsd = t_crit * np.sqrt(2 * mse / r)
         diff = abs(means[t1] - means[t2])
-        if diff > lsd:
-            sig_matrix.loc[t1, t2] = True
-            sig_matrix.loc[t2, t1] = True
+        if diff <= lsd:  # not significantly different
+            ns_matrix.loc[t1, t2] = True
+            ns_matrix.loc[t2, t1] = True
 
-    # Build CLD groups
-    sorted_means = means.sort_values(ascending=False)
+    # Assign letters (lowest mean = "a")
+    sorted_means = means.sort_values(ascending=True)
+    letters = {t: "" for t in treatments}
     groups = []
+    current_letter = "a"
+
     for t in sorted_means.index:
         placed = False
         for g in groups:
-            if not any(sig_matrix.loc[t, other] for other in g):
-                g.append(t)
+            if all(ns_matrix.loc[t, other] for other in g["members"]):
+                letters[t] += g["letter"]
                 placed = True
-                break
         if not placed:
-            groups.append([t])
-
-    for i, g in enumerate(groups):
-        letter = chr(ord("a") + i)
-        for t in g:
-            letters[t] += letter
+            letters[t] += current_letter
+            groups.append({"letter": current_letter, "members": [t]})
+            current_letter = chr(ord(current_letter) + 1)
 
     return letters
 
@@ -214,12 +213,12 @@ if uploaded_file:
                     # %CV
                     cv = 100 * np.sqrt(mse) / means.mean()
 
-                    # Letters via CLD (always)
+                    # Letters via CLD (always, overlapping)
                     letters = generate_cld(means, mse, df_error, alpha_choice, rep_counts)
 
-                    # LSD (always, balanced design formula)
+                    # LSD (always)
                     t_crit = stats.t.ppf(1 - alpha_choice/2, df_error)
-                    r = np.mean(list(rep_counts.values()))  # average replicates per treatment
+                    r = np.mean(list(rep_counts.values()))
                     lsd_val = t_crit * np.sqrt(2 * mse / r)
 
                     mean_col, group_col = f"{date} Mean", f"{date} Group"
