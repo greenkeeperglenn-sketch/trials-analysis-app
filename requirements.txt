@@ -9,6 +9,6 @@ xlsxwriter
 plotly
 statsmodels
 python-docx
-kaleido
+kaleido==0.2.1
 
 
