@@ -29,6 +29,7 @@ def generate_cld(means, mse, df_error, alpha, rep_counts):
 
     for t1, t2 in combinations(treatments, 2):
         n1, n2 = rep_counts.get(t1, 1), rep_counts.get(t2, 1)
+        # Use per-treatment replicate counts for comparisons
         lsd = t_crit * np.sqrt(mse * (1/n1 + 1/n2))
         diff = abs(means[t1] - means[t2])
         if diff > lsd:
@@ -213,14 +214,19 @@ if uploaded_file:
                     # %CV
                     cv = 100 * np.sqrt(mse) / means.mean()
 
-                    # Letters via CLD
+                    # Letters via CLD (always)
                     letters = generate_cld(means, mse, df_error, alpha_choice, rep_counts)
+
+                    # LSD (always, balanced design formula)
+                    t_crit = stats.t.ppf(1 - alpha_choice/2, df_error)
+                    r = np.mean(list(rep_counts.values()))  # average replicates per treatment
+                    lsd_val = t_crit * np.sqrt(2 * mse / r)
 
                     mean_col, group_col = f"{date} Mean", f"{date} Group"
                     wide_table[mean_col] = wide_table["Treatment"].map(means)
                     wide_table[group_col] = wide_table["Treatment"].map(letters)
 
-                    summaries[date] = {"P": p_val, "LSD": "-", "d.f.": df_error, "%CV": cv}
+                    summaries[date] = {"P": p_val, "LSD": lsd_val, "d.f.": df_error, "%CV": cv}
                 else:
                     summaries[date] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
 
