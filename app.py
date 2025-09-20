@@ -22,36 +22,48 @@ alpha_choice = alpha_options[alpha_label]
 
 # --- Helper: Compact Letter Display (CLD) with overlaps ---
 def generate_cld(means, mse, df_error, alpha, rep_counts):
-    treatments = means.index.tolist()
+    """
+    Build overlapping letter groupings (a, ab, bc, ...) using LSD.
+    - Lowest mean gets 'a', higher means progress to b, c, ...
+    - A treatment can inherit multiple letters if it bridges groups.
+    """
+    # Critical t
     t_crit = stats.t.ppf(1 - alpha/2, df_error)
 
-    # Build "not significantly different" matrix
-    ns_matrix = pd.DataFrame(False, index=treatments, columns=treatments)
+    treatments = list(means.index)
+    # NSD matrix: True if two treatments are NOT significantly different by LSD
+    nsd = pd.DataFrame(False, index=treatments, columns=treatments)
+    for t in treatments:
+        nsd.loc[t, t] = True  # diagonal
+
     for t1, t2 in combinations(treatments, 2):
         n1, n2 = rep_counts.get(t1, 1), rep_counts.get(t2, 1)
-        r = np.mean([n1, n2])
-        lsd = t_crit * np.sqrt(2 * mse / r)
-        diff = abs(means[t1] - means[t2])
-        if diff <= lsd:  # not significantly different
-            ns_matrix.loc[t1, t2] = True
-            ns_matrix.loc[t2, t1] = True
+        # per-pair r as average reps (matches balanced design; adapts if blocks removed)
+        r_pair = np.mean([n1, n2])
+        lsd = t_crit * np.sqrt(2 * mse / r_pair)
+        if abs(means[t1] - means[t2]) <= lsd:
+            nsd.loc[t1, t2] = True
+            nsd.loc[t2, t1] = True
 
-    # Assign letters (lowest mean = "a")
-    sorted_means = means.sort_values(ascending=True)
+    # Assign letters (lowest mean first)
+    order = means.sort_values(ascending=True).index
     letters = {t: "" for t in treatments}
-    groups = []
-    current_letter = "a"
+    groups = []  # each item: {"letter": "a", "members": [treatments...] }
+    next_letter_code = ord("a")
 
-    for t in sorted_means.index:
-        placed = False
+    for t in order:
+        joined_any = False
+        # Try to join ALL compatible existing groups (enables overlaps)
         for g in groups:
-            if all(ns_matrix.loc[t, other] for other in g["members"]):
+            if all(nsd.loc[t, m] for m in g["members"]):
                 letters[t] += g["letter"]
-                placed = True
-        if not placed:
-            letters[t] += current_letter
-            groups.append({"letter": current_letter, "members": [t]})
-            current_letter = chr(ord(current_letter) + 1)
+                g["members"].append(t)
+                joined_any = True
+        if not joined_any:
+            new_letter = chr(next_letter_code)
+            groups.append({"letter": new_letter, "members": [t]})
+            letters[t] += new_letter
+            next_letter_code += 1
 
     return letters
 
@@ -213,7 +225,7 @@ if uploaded_file:
                     # %CV
                     cv = 100 * np.sqrt(mse) / means.mean()
 
-                    # Letters via CLD (always, overlapping)
+                    # Letters via CLD (overlapping)
                     letters = generate_cld(means, mse, df_error, alpha_choice, rep_counts)
 
                     # LSD (always)
