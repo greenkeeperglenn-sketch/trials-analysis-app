@@ -204,7 +204,21 @@ if uploaded_file:
             df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
             df_sub = df_sub.dropna(subset=["Value"])
 
-            # Boxplot
+            # --- Block selector applied BEFORE plotting ---
+            if "Block" in df_sub.columns:
+                blocks = sorted(df_sub["Block"].dropna().unique())
+                sel_blocks = st.multiselect(
+                    f"Include Blocks for {assess}",
+                    blocks,
+                    default=blocks,
+                    key=f"blocks_{assess.replace(' ', '_')}"
+                )
+                if not sel_blocks:
+                    st.warning("No blocks selected. Please select at least one block to see results.")
+                    continue
+                df_sub = df_sub[df_sub["Block"].isin(sel_blocks)]
+
+            # --- Boxplot ---
             if view_mode == "By Date":
                 fig = px.box(df_sub, x="DateLabel", y="Value", color="Treatment",
                              color_discrete_map=color_map,
@@ -215,13 +229,7 @@ if uploaded_file:
             fig.update_traces(boxpoints=False)
             st.plotly_chart(fig, use_container_width=True)
 
-            # Block selector (moved here)
-            if "Block" in df_sub.columns:
-                blocks = sorted(df_sub["Block"].dropna().unique())
-                sel_blocks = st.multiselect("Include Blocks", blocks, default=blocks, key=f"blocks_{assess}")
-                df_sub = df_sub[df_sub["Block"].isin(sel_blocks)]
-
-            # Stats table
+            # --- Stats table ---
             wide_table = pd.DataFrame({"Treatment": treatments})
             summaries = {}
             nsd_debug = {}
@@ -251,16 +259,17 @@ if uploaded_file:
                     except Exception:
                         df_error, mse, p_val = np.nan, np.nan, np.nan
                     cv = 100 * np.sqrt(mse) / means.mean() if pd.notna(mse) and means.mean() != 0 else np.nan
-                    # Lettering toggle (moved under stats table)
-                                  # Lettering toggle (moved under stats table)
+
+                    # --- Lettering toggle (unique key per assessment + date) ---
                     a_is_lowest = (
                         st.radio(
-                            f"Lettering convention for {assess}",
+                            f"Lettering convention for {assess} ({date_label})",
                             ["Lowest = A", "Highest = A"],
                             index=0,
-                            key=f"letters_{assess.replace(' ', '_')}"
+                            key=f"letters_{assess.replace(' ', '_')}_{date_label.replace(' ', '_')}"
                         ) == "Lowest = A"
                     )
+
                     letters, nsd = generate_cld_overlap(means, mse, df_error, alpha_choice, rep_counts, a_is_lowest=a_is_lowest)
                     nsd_debug[date_label] = nsd
                     n_avg = np.mean(list(rep_counts.values()))
@@ -307,5 +316,3 @@ if uploaded_file:
         st.download_button("Download Tables (Excel)", data=buffer,
                            file_name="assessment_tables.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-
