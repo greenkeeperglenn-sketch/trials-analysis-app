@@ -9,7 +9,10 @@ import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from itertools import combinations
 
-# Use full browser width
+# NEW: for Word export
+from docx import Document
+from docx.shared import Inches
+
 st.set_page_config(layout="wide")
 st.title("Assessment Data Explorer")
 
@@ -106,19 +109,6 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
     letters = {t: "".join(sorted(v)) for t, v in letters.items()}
     return letters, nsd
 
-def rotate_headers(df):
-    return (df.style
-              .set_table_styles(
-                  [{"selector": "th.col_heading",
-                    "props": [("transform", "rotate(-60deg)"),
-                              ("text-align", "left"),
-                              ("vertical-align", "bottom"),
-                              ("font-size", "10px"),
-                              ("white-space", "nowrap")]}]
-              )
-              .format(precision=1)
-           )
-
 # ======================
 # Upload & Parse
 # ======================
@@ -199,13 +189,15 @@ if uploaded_file:
         date_labels_ordered = chronological_labels(date_labels_all)
 
         all_tables = {}
+        word_doc = Document()  # Word doc for export
+
         for assess in selected_assessments:
             st.subheader(f"Assessment: {assess}")
             df_sub = data[data["Assessment"] == assess].copy()
             df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
             df_sub = df_sub.dropna(subset=["Value"])
 
-            # Block selector (before plotting)
+            # Block selector
             if "Block" in df_sub.columns:
                 blocks = sorted(df_sub["Block"].dropna().unique())
                 sel_blocks = st.multiselect(
@@ -233,7 +225,6 @@ if uploaded_file:
             # Stats table
             wide_table = pd.DataFrame({"Treatment": treatments})
             summaries = {}
-            nsd_debug = {}
 
             for date_label in date_labels_ordered:
                 df_date = df_sub[df_sub["DateLabel"] == date_label].copy()
@@ -265,7 +256,6 @@ if uploaded_file:
                         means, mse, df_error, alpha_choice, rep_counts,
                         a_is_lowest=global_a_is_lowest
                     )
-                    nsd_debug[date_label] = nsd
                     n_avg = np.mean(list(rep_counts.values()))
                     lsd_val = stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/n_avg) if pd.notna(mse) else np.nan
                     wide_table[f"{date_label}"] = wide_table["Treatment"].map(means)
@@ -284,25 +274,31 @@ if uploaded_file:
                     row[f"{date_label} S"] = ""
                 summary_rows.append(row)
             wide_table = pd.concat([wide_table, pd.DataFrame(summary_rows)], ignore_index=True)
-
             wide_table = wide_table.round(1)
 
-            st.dataframe(
-                rotate_headers(wide_table),
-                use_container_width=True,
-                hide_index=True,
-                height=wide_table.shape[0] * 35,
-                column_config={"Treatment": st.column_config.Column(pinned=True)}
-            )
+            st.dataframe(wide_table, use_container_width=True, hide_index=True)
 
             all_tables[assess] = wide_table
 
-            with st.expander(f"NSD Matrix ({assess})"):
-                for date_label, nsd in nsd_debug.items():
-                    st.markdown(f"**{date_label}**")
-                    nsd_display = nsd.replace({True: "✓", False: "×"})
-                    st.dataframe(nsd_display)
+            # === Add to Word doc ===
+            word_doc.add_heading(f"Assessment: {assess}", level=2)
+            fig_bytes = fig.to_image(format="png")
+            img_buffer = BytesIO(fig_bytes)
+            img_buffer.seek(0)
+            word_doc.add_picture(img_buffer, width=Inches(5))
+            word_doc.add_paragraph()
 
+            table = word_doc.add_table(rows=1, cols=len(wide_table.columns))
+            hdr_cells = table.rows[0].cells
+            for i, col in enumerate(wide_table.columns):
+                hdr_cells[i].text = str(col)
+            for row in wide_table.values.tolist():
+                row_cells = table.add_row().cells
+                for i, val in enumerate(row):
+                    row_cells[i].text = str(val)
+            word_doc.add_paragraph()
+
+        # === Download buttons ===
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             for assess, table in all_tables.items():
@@ -310,3 +306,10 @@ if uploaded_file:
         st.download_button("Download Tables (Excel)", data=buffer,
                            file_name="assessment_tables.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        word_buffer = BytesIO()
+        word_doc.save(word_buffer)
+        word_buffer.seek(0)
+        st.download_button("Download Report (Word)", data=word_buffer,
+                           file_name="assessment_report.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
