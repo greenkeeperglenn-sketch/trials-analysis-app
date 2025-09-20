@@ -282,8 +282,9 @@ if uploaded_file:
 
             # === Add to Word doc ===
             word_doc.add_heading(f"Assessment: {assess}", level=2)
-            fig_bytes = fig.to_image(format="png")
-            img_buffer = BytesIO(fig_bytes)
+
+            img_buffer = BytesIO()
+            fig.write_image(img_buffer, format="png")  # safer than fig.to_image
             img_buffer.seek(0)
             word_doc.add_picture(img_buffer, width=Inches(5))
             word_doc.add_paragraph()
