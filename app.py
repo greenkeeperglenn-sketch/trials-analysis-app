@@ -109,15 +109,18 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
     return letters, nsd
 
 def rotate_headers(df):
-    """Apply header rotation + small font via Styler."""
-    return df.style.set_table_styles(
-        [{"selector": "th.col_heading",
-          "props": [("transform", "rotate(-60deg)"),
-                    ("text-align", "left"),
-                    ("vertical-align", "bottom"),
-                    ("font-size", "10px"),
-                    ("white-space", "nowrap")]}]
-    )
+    """Apply header rotation + small font via Styler, with rounding."""
+    return (df.style
+              .set_table_styles(
+                  [{"selector": "th.col_heading",
+                    "props": [("transform", "rotate(-60deg)"),
+                              ("text-align", "left"),
+                              ("vertical-align", "bottom"),
+                              ("font-size", "6px"),
+                              ("white-space", "nowrap")]}]
+              )
+              .format(precision=1)  # Force 1 decimal place in display
+           )
 
 # ======================
 # Upload & Parse
@@ -300,3 +303,4 @@ if uploaded_file:
         st.download_button("Download Tables (Excel)", data=buffer,
                            file_name="assessment_tables.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
