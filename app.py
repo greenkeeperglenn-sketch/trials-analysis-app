@@ -22,11 +22,8 @@ alpha_choice = alpha_options[alpha_label]
 
 # --- Helper: Compact Letter Display (CLD) from pairwise LSD ---
 def generate_cld(means, mse, df_error, alpha, rep_counts):
-    """Return dict of Treatment -> letters for compact letter display."""
     treatments = means.index.tolist()
     letters = {t: "" for t in treatments}
-
-    # pairwise comparisons
     sig_matrix = pd.DataFrame(False, index=treatments, columns=treatments)
     t_crit = stats.t.ppf(1 - alpha/2, df_error)
 
@@ -38,7 +35,7 @@ def generate_cld(means, mse, df_error, alpha, rep_counts):
             sig_matrix.loc[t1, t2] = True
             sig_matrix.loc[t2, t1] = True
 
-    # Build CLD (basic greedy algorithm)
+    # Build CLD groups
     sorted_means = means.sort_values(ascending=False)
     groups = []
     for t in sorted_means.index:
@@ -51,7 +48,6 @@ def generate_cld(means, mse, df_error, alpha, rep_counts):
         if not placed:
             groups.append([t])
 
-    # Assign letters
     for i, g in enumerate(groups):
         letter = chr(ord("a") + i)
         for t in g:
@@ -66,11 +62,9 @@ if uploaded_file:
     all_data = []
     assessment_cols = set()
     block_col_global = None
-    treat_col_global = None
 
     for sheet in xls.sheet_names:
         try:
-            # Look at first 20 rows to find header
             preview = pd.read_excel(xls, sheet_name=sheet, nrows=20)
             header_row = None
             for i, row in preview.iterrows():
@@ -83,7 +77,6 @@ if uploaded_file:
                 st.warning(f"No suitable header row found in {sheet}, skipping.")
                 continue
 
-            # Read full sheet
             df = pd.read_excel(xls, sheet_name=sheet, skiprows=header_row)
             df.columns = df.iloc[0]
             df = df.drop(df.index[0])
@@ -99,7 +92,7 @@ if uploaded_file:
                 st.warning(f"Sheet {sheet}: Could not detect Block/Treatment columns. Found {list(df.columns)}")
                 continue
 
-            block_col_global, treat_col_global = block_col, treat_col
+            block_col_global = block_col
             treat_idx = df.columns.get_loc(treat_col)
             assess_list = df.columns[treat_idx+1:].tolist()
             assessment_cols.update(assess_list)
@@ -142,6 +135,14 @@ if uploaded_file:
                 treatments = pasted_names
             else:
                 st.warning("Number of names pasted does not match number of treatments!")
+
+        # --- Block selector ---
+        if "Block" in data.columns:
+            unique_blocks = sorted(data["Block"].dropna().unique())
+            selected_blocks = st.multiselect(
+                "Include Blocks", unique_blocks, default=unique_blocks
+            )
+            data = data[data["Block"].isin(selected_blocks)]
 
         # --- User selects assessments ---
         selected_assessments = st.multiselect(
