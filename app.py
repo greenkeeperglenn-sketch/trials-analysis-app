@@ -51,13 +51,6 @@ def chronological_labels(labels):
     )
     return [p[0] for p in pairs_sorted]
 
-def lsd_value(mse, df_error, alpha, n1, n2):
-    """Pairwise LSD for unequal replications."""
-    if df_error <= 0 or mse < 0:
-        return np.nan
-    t_crit = stats.t.ppf(1 - alpha/2, df_error)
-    return t_crit * np.sqrt(mse * (1/n1 + 1/n2))
-
 def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=True):
     """
     Agricolae-style CLD with overlaps (ab, bc).
@@ -272,7 +265,20 @@ if uploaded_file:
                 summary_rows.append(row)
             wide_table = pd.concat([wide_table, pd.DataFrame(summary_rows)], ignore_index=True)
 
-            st.dataframe(wide_table)
+            # Round all numeric values to 1 decimal
+            wide_table = wide_table.round(1)
+
+            # Apply styling: rotate headers
+            def rotate_headers(df):
+                return df.style.set_table_styles(
+                    [{"selector": "th.col_heading",
+                      "props": [("transform", "rotate(90deg)"),
+                                ("text-align", "left"),
+                                ("vertical-align", "bottom"),
+                                ("white-space", "nowrap")]}]
+                )
+
+            st.dataframe(rotate_headers(wide_table), use_container_width=True)
             all_tables[assess] = wide_table
 
             # Debug NSD matrix
@@ -286,7 +292,7 @@ if uploaded_file:
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             for assess, table in all_tables.items():
-                table.to_excel(writer, sheet_name=assess[:30], index=False)
+                table.round(1).to_excel(writer, sheet_name=assess[:30], index=False)
         st.download_button("Download Tables (Excel)", data=buffer,
                            file_name="assessment_tables.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
