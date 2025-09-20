@@ -59,7 +59,7 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
     Deduplicates letters so outputs are clean (no 'aa' or 'bb').
     """
     trts = list(means.index)
-    letters = {t: set() for t in trts}  # store as sets for deduplication
+    letters = {t: set() for t in trts}
 
     # --- Build NSD matrix ---
     nsd = pd.DataFrame(False, index=trts, columns=trts)
@@ -105,9 +105,19 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
                             g["members"].append(cand)
                             changed = True
 
-    # Convert sets → sorted strings
     letters = {t: "".join(sorted(v)) for t, v in letters.items()}
     return letters, nsd
+
+def rotate_headers(df):
+    """Apply header rotation + small font via Styler."""
+    return df.style.set_table_styles(
+        [{"selector": "th.col_heading",
+          "props": [("transform", "rotate(-60deg)"),
+                    ("text-align", "left"),
+                    ("vertical-align", "bottom"),
+                    ("font-size", "10px"),
+                    ("white-space", "nowrap")]}]
+    )
 
 # ======================
 # Upload & Parse
@@ -222,8 +232,8 @@ if uploaded_file:
             for date_label in date_labels_ordered:
                 df_date = df_sub[df_sub["DateLabel"] == date_label].copy()
                 if df_date.empty:
-                    wide_table[f"{date_label} Mean"] = np.nan
-                    wide_table[f"{date_label} Group"] = ""
+                    wide_table[f"{date_label}"] = np.nan
+                    wide_table[f"{date_label} S"] = ""
                     summaries[date_label] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
                     continue
 
@@ -247,49 +257,42 @@ if uploaded_file:
                     a_is_lowest = (lettering_mode == "Lowest = A")
                     letters, nsd = generate_cld_overlap(means, mse, df_error, alpha_choice, rep_counts, a_is_lowest=a_is_lowest)
                     nsd_debug[date_label] = nsd
-                    # LSD using average reps
                     n_avg = np.mean(list(rep_counts.values()))
                     lsd_val = stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/n_avg) if pd.notna(mse) else np.nan
-                    wide_table[f"{date_label} Mean"] = wide_table["Treatment"].map(means)
-                    wide_table[f"{date_label} Group"] = wide_table["Treatment"].map(letters).fillna("")
+                    wide_table[f"{date_label}"] = wide_table["Treatment"].map(means)
+                    wide_table[f"{date_label} S"] = wide_table["Treatment"].map(letters).fillna("")
                     summaries[date_label] = {"P": p_val, "LSD": lsd_val, "d.f.": df_error, "%CV": cv}
                 else:
-                    wide_table[f"{date_label} Mean"] = np.nan
-                    wide_table[f"{date_label} Group"] = ""
+                    wide_table[f"{date_label}"] = np.nan
+                    wide_table[f"{date_label} S"] = ""
                     summaries[date_label] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
 
             summary_rows = []
             for metric in ["P", "LSD", "d.f.", "%CV"]:
                 row = {"Treatment": metric}
                 for date_label in date_labels_ordered:
-                    row[f"{date_label} Mean"] = summaries[date_label][metric]
-                    row[f"{date_label} Group"] = ""
+                    row[f"{date_label}"] = summaries[date_label][metric]
+                    row[f"{date_label} S"] = ""
                 summary_rows.append(row)
             wide_table = pd.concat([wide_table, pd.DataFrame(summary_rows)], ignore_index=True)
 
-            # Round all numeric values to 1 decimal
             wide_table = wide_table.round(1)
 
-            # Rotate headers & pin Treatment column
             st.dataframe(
-                wide_table,
+                rotate_headers(wide_table),
                 use_container_width=True,
                 hide_index=True,
-                column_config={
-                    "Treatment": st.column_config.Column(pinned=True)
-                }
+                column_config={"Treatment": st.column_config.Column(pinned=True)}
             )
 
             all_tables[assess] = wide_table
 
-            # Debug NSD matrix
             with st.expander(f"NSD Matrix ({assess})"):
                 for date_label, nsd in nsd_debug.items():
                     st.markdown(f"**{date_label}**")
                     nsd_display = nsd.replace({True: "✓", False: "×"})
                     st.dataframe(nsd_display)
 
-        # Export
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             for assess, table in all_tables.items():
