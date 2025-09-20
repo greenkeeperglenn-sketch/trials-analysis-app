@@ -14,7 +14,7 @@ st.set_page_config(layout="wide")
 st.title("Assessment Data Explorer")
 
 # ======================
-# UI: Significance & Lettering options
+# UI: Significance level
 # ======================
 alpha_options = {
     "Fungicide (0.05)": 0.05,
@@ -23,12 +23,6 @@ alpha_options = {
 }
 alpha_label = st.radio("Select significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
-
-lettering_mode = st.radio(
-    "Lettering convention:",
-    ["Lowest = A", "Highest = A"],
-    index=0
-)
 
 # ======================
 # Helpers
@@ -116,7 +110,7 @@ def rotate_headers(df):
                     "props": [("transform", "rotate(-60deg)"),
                               ("text-align", "left"),
                               ("vertical-align", "bottom"),
-                              ("font-size", "6px"),
+                              ("font-size", "10px"),
                               ("white-space", "nowrap")]}]
               )
               .format(precision=1)  # Force 1 decimal place in display
@@ -195,12 +189,6 @@ if uploaded_file:
             else:
                 st.warning("Number of names pasted does not match detected treatments!")
 
-        # Block selector
-        if "Block" in data.columns:
-            blocks = sorted(data["Block"].dropna().unique())
-            sel_blocks = st.multiselect("Include Blocks", blocks, default=blocks)
-            data = data[data["Block"].isin(sel_blocks)]
-
         # Assessment selector
         selected_assessments = st.multiselect("Select assessments:", sorted(set(data["Assessment"].unique())))
         view_mode = st.radio("How should boxplots be grouped?", ["By Date", "By Treatment"])
@@ -226,6 +214,12 @@ if uploaded_file:
                              category_orders={"Treatment": treatments, "DateLabel": date_labels_ordered})
             fig.update_traces(boxpoints=False)
             st.plotly_chart(fig, use_container_width=True)
+
+            # Block selector (moved here)
+            if "Block" in df_sub.columns:
+                blocks = sorted(df_sub["Block"].dropna().unique())
+                sel_blocks = st.multiselect("Include Blocks", blocks, default=blocks, key=f"blocks_{assess}")
+                df_sub = df_sub[df_sub["Block"].isin(sel_blocks)]
 
             # Stats table
             wide_table = pd.DataFrame({"Treatment": treatments})
@@ -257,7 +251,9 @@ if uploaded_file:
                     except Exception:
                         df_error, mse, p_val = np.nan, np.nan, np.nan
                     cv = 100 * np.sqrt(mse) / means.mean() if pd.notna(mse) and means.mean() != 0 else np.nan
-                    a_is_lowest = (lettering_mode == "Lowest = A")
+                    # Lettering toggle (moved under stats table)
+                    a_is_lowest = (st.radio("Lettering convention:", ["Lowest = A", "Highest = A"],
+                                             index=0, key=f"letters_{assess}") == "Lowest = A")
                     letters, nsd = generate_cld_overlap(means, mse, df_error, alpha_choice, rep_counts, a_is_lowest=a_is_lowest)
                     nsd_debug[date_label] = nsd
                     n_avg = np.mean(list(rep_counts.values()))
@@ -285,6 +281,7 @@ if uploaded_file:
                 rotate_headers(wide_table),
                 use_container_width=True,
                 hide_index=True,
+                height=wide_table.shape[0] * 35,
                 column_config={"Treatment": st.column_config.Column(pinned=True)}
             )
 
@@ -303,4 +300,3 @@ if uploaded_file:
         st.download_button("Download Tables (Excel)", data=buffer,
                            file_name="assessment_tables.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
