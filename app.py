@@ -210,43 +210,34 @@ if uploaded_file:
                     st.warning("No blocks selected. Please select at least one block to see results.")
                     continue
                 df_sub = df_sub[df_sub["Block"].isin(sel_blocks)]
+    # Boxplot
+    if view_mode == "By Date":
+        fig = px.box(df_sub, x="DateLabel", y="Value", color="Treatment",
+                     color_discrete_map=color_map,
+                     category_orders={"DateLabel": date_labels_ordered, "Treatment": treatments})
+    else:
+        fig = px.box(df_sub, x="Treatment", y="Value", color="DateLabel",
+                     category_orders={"Treatment": treatments, "DateLabel": date_labels_ordered})
+    fig.update_traces(boxpoints=False)
 
-            # Boxplot
-            if view_mode == "By Date":
-                fig = px.box(df_sub, x="DateLabel", y="Value", color="Treatment",
-                             color_discrete_map=color_map,
-                             category_orders={"DateLabel": date_labels_ordered, "Treatment": treatments})
-            else:
-                fig = px.box(df_sub, x="Treatment", y="Value", color="DateLabel",
-                             category_orders={"Treatment": treatments, "DateLabel": date_labels_ordered})
-            # Boxplot
-if view_mode == "By Date":
-    fig = px.box(df_sub, x="DateLabel", y="Value", color="Treatment",
-                 color_discrete_map=color_map,
-                 category_orders={"DateLabel": date_labels_ordered, "Treatment": treatments})
-else:
-    fig = px.box(df_sub, x="Treatment", y="Value", color="DateLabel",
-                 category_orders={"Treatment": treatments, "DateLabel": date_labels_ordered})
-fig.update_traces(boxpoints=False)
+    # === New: per-graph axis controls ===
+    col1, col2 = st.columns(2)
+    with col1:
+        ymin = st.number_input(
+            f"Y-axis minimum for {assess}",
+            value=float(df_sub["Value"].min()),
+            key=f"ymin_{assess}"
+        )
+    with col2:
+        ymax = st.number_input(
+            f"Y-axis maximum for {assess}",
+            value=float(df_sub["Value"].max()),
+            key=f"ymax_{assess}"
+        )
 
-# === New: per-graph axis controls ===
-col1, col2 = st.columns(2)
-with col1:
-    ymin = st.number_input(
-        f"Y-axis minimum for {assess}", 
-        value=float(df_sub["Value"].min()), 
-        key=f"ymin_{assess}"
-    )
-with col2:
-    ymax = st.number_input(
-        f"Y-axis maximum for {assess}", 
-        value=float(df_sub["Value"].max()), 
-        key=f"ymax_{assess}"
-    )
+    fig.update_yaxes(range=[ymin, ymax])
 
-fig.update_yaxes(range=[ymin, ymax])
-
-st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 
             # Stats table
@@ -341,4 +332,5 @@ st.plotly_chart(fig, use_container_width=True)
         st.download_button("Download Report (Word)", data=word_buffer,
                            file_name="assessment_report.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
 
