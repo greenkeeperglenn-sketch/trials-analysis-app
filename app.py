@@ -239,20 +239,20 @@ if uploaded_file:
                 )
             fig.update_traces(boxpoints=False)
 
-            # Axis controls
+            # Axis controls (step = 1.0 to keep float type consistent)
             col1, col2 = st.columns(2)
             with col1:
                 ymin = st.number_input(
                     f"Y-axis minimum for {assess}",
                     value=float(df_sub["Value"].min()),
-                    step=1,
+                    step=1.0,
                     key=f"ymin_{assess}"
                 )
             with col2:
                 ymax = st.number_input(
                     f"Y-axis maximum for {assess}",
                     value=float(df_sub["Value"].max()),
-                    step=1,
+                    step=1.0,
                     key=f"ymax_{assess}"
                 )
 
