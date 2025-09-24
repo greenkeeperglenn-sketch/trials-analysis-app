@@ -29,17 +29,6 @@ alpha_options = {
 alpha_label = st.sidebar.radio("Significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
 
-view_mode = st.sidebar.radio("Boxplot grouping:", ["By Date", "By Treatment"])
-
-global_a_is_lowest = (
-    st.sidebar.radio(
-        "Lettering convention:",
-        ["Lowest = A", "Highest = A"],
-        index=0,
-        key="letters_global"
-    ) == "Lowest = A"
-)
-
 # ======================
 # Helpers
 # ======================
@@ -197,6 +186,25 @@ if uploaded_file:
             df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
             df_sub = df_sub.dropna(subset=["Value"])
 
+            # Per-graph controls
+            colA, colB = st.columns(2)
+            with colA:
+                view_mode_local = st.radio(
+                    f"Boxplot grouping for {assess}",
+                    ["By Date", "By Treatment"],
+                    index=0,
+                    key=f"view_{assess}"
+                )
+            with colB:
+                a_is_lowest_local = (
+                    st.radio(
+                        f"Lettering convention for {assess}",
+                        ["Lowest = A", "Highest = A"],
+                        index=0,
+                        key=f"letters_{assess}"
+                    ) == "Lowest = A"
+                )
+
             # Block selector
             if "Block" in df_sub.columns:
                 blocks = sorted(df_sub["Block"].dropna().unique())
@@ -212,7 +220,7 @@ if uploaded_file:
                 df_sub = df_sub[df_sub["Block"].isin(sel_blocks)]
 
             # Boxplot
-            if view_mode == "By Date":
+            if view_mode_local == "By Date":
                 fig = px.box(
                     df_sub,
                     x="DateLabel",
@@ -231,26 +239,27 @@ if uploaded_file:
                 )
             fig.update_traces(boxpoints=False)
 
-            # === New: per-graph axis controls ===
+            # Axis controls
             col1, col2 = st.columns(2)
             with col1:
                 ymin = st.number_input(
                     f"Y-axis minimum for {assess}",
                     value=float(df_sub["Value"].min()),
+                    step=1,
                     key=f"ymin_{assess}"
                 )
             with col2:
                 ymax = st.number_input(
                     f"Y-axis maximum for {assess}",
                     value=float(df_sub["Value"].max()),
+                    step=1,
                     key=f"ymax_{assess}"
                 )
 
             fig.update_yaxes(range=[ymin, ymax])
-
             st.plotly_chart(fig, use_container_width=True)
 
-            # === Stats table ===
+            # Stats table
             wide_table = pd.DataFrame({"Treatment": treatments})
             summaries = {}
 
@@ -282,7 +291,7 @@ if uploaded_file:
 
                     letters, nsd = generate_cld_overlap(
                         means, mse, df_error, alpha_choice, rep_counts,
-                        a_is_lowest=global_a_is_lowest
+                        a_is_lowest=a_is_lowest_local
                     )
                     n_avg = np.mean(list(rep_counts.values()))
                     lsd_val = stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/n_avg) if pd.notna(mse) else np.nan
