@@ -41,24 +41,20 @@ def build_stats_table(df_sub, treatments, date_labels_ordered, alpha_choice, a_i
 
             cv = 100 * np.sqrt(mse) / means.mean() if pd.notna(mse) and means.mean() != 0 else np.nan
 
-            letters, _ = generate_cld_overlap(
-                means, mse, df_error, alpha_choice, rep_counts,
-                a_is_lowest=a_is_lowest_chart
-            )
-
-            n_avg = np.mean(list(rep_counts.values()))
-            lsd_val = (
-                stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/n_avg)
-                if pd.notna(mse) else np.nan
-            )
-
-            # ✅ Conditional display like reference package
+            # ✅ Conditional letters & stats
             if pd.notna(p_val) and p_val > alpha_choice:
+                # Not significant → no letters
+                letters = {t: "" for t in means.index}
                 p_disp = "ns"
                 lsd_disp = "-"
             else:
+                # Significant → generate letters
+                letters, _ = generate_cld_overlap(
+                    means, mse, df_error, alpha_choice, rep_counts,
+                    a_is_lowest=a_is_lowest_chart
+                )
                 p_disp = f"{p_val:.3f}" if pd.notna(p_val) else ""
-                lsd_disp = f"{lsd_val:.4f}" if pd.notna(lsd_val) else "-"
+                lsd_disp = f"{stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/np.mean(list(rep_counts.values()))):.4f}" if pd.notna(mse) else "-"
 
             df_disp = f"{df_error:.0f}" if pd.notna(df_error) else ""
             cv_disp = f"{cv:.1f}" if pd.notna(cv) else ""
