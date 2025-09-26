@@ -199,6 +199,7 @@ if uploaded_file:
         # ======================
         for assess in selected_assessments:
             with st.expander(f"Assessment: {assess}", expanded=False):
+                st.markdown(f"<h2 style='text-align:center'>{assess}</h2>", unsafe_allow_html=True)
 
                 # ----------------------
                 # Chart Settings
@@ -254,45 +255,33 @@ if uploaded_file:
                 # ----------------------
                 with st.expander("Chart", expanded=True):
                     if chart_mode == "Boxplot":
+                        df_plot = df_sub[df_sub["Treatment"].isin(treatments)].copy()
                         if view_mode_chart == "By Date":
                             fig = px.box(
-                                df_sub,
+                                df_plot,
                                 x="DateLabel",
                                 y="Value",
                                 color="Treatment",
                                 color_discrete_map=color_map,
-                                category_orders={
-                                    "DateLabel": date_labels_ordered,
-                                    "Treatment": treatments,
-                                },
+                                category_orders={"DateLabel": date_labels_ordered, "Treatment": treatments},
                             )
                         else:
                             fig = px.box(
-                                df_sub,
+                                df_plot,
                                 x="Treatment",
                                 y="Value",
                                 color="DateLabel",
-                                category_orders={
-                                    "Treatment": treatments,
-                                    "DateLabel": date_labels_ordered,
-                                },
+                                category_orders={"Treatment": treatments, "DateLabel": date_labels_ordered},
                             )
                         fig.update_traces(boxpoints=False)
                     else:
-                        # ---------------------------
-                        # Grouped BAR CHART: MEANS + SE/LSD + Letters
-                        # ---------------------------
                         agg = (
-                            df_sub
-                            .groupby(["DateLabel", "Treatment"])["Value"]
+                            df_sub.groupby(["DateLabel", "Treatment"])["Value"]
                             .agg(mean="mean", count="count", std="std")
                             .reset_index()
                         )
                         agg["se"] = agg["std"] / np.sqrt(agg["count"])
-
-                        # Letters & LSD per date
-                        letters_dict = {}
-                        lsd_by_date = {}
+                        letters_dict, lsd_by_date = {}, {}
                         for date_label in list(df_sub["DateLabel"].cat.categories):
                             df_date = df_sub[df_sub["DateLabel"] == date_label]
                             if df_date["Treatment"].nunique() > 1 and len(df_date) > 1:
@@ -320,30 +309,22 @@ if uploaded_file:
                             else:
                                 letters_dict[date_label] = {}
                                 lsd_by_date[date_label] = np.nan
-
                         agg["letters"] = agg.apply(
-                            lambda r: letters_dict.get(r["DateLabel"], {}).get(r["Treatment"], ""),
-                            axis=1
+                            lambda r: letters_dict.get(r["DateLabel"], {}).get(r["Treatment"], ""), axis=1
                         )
                         agg["LSD"] = agg["DateLabel"].map(lsd_by_date)
-
-                        # X/grouping axes
                         if view_mode_chart == "By Date":
-                            x_axis = "DateLabel"
-                            group_axis = "Treatment"
+                            x_axis, group_axis = "DateLabel", "Treatment"
                             category_orders_bar = {"DateLabel": list(df_sub["DateLabel"].cat.categories), "Treatment": treatments}
                         else:
-                            x_axis = "Treatment"
-                            group_axis = "DateLabel"
+                            x_axis, group_axis = "Treatment", "DateLabel"
                             category_orders_bar = {"Treatment": treatments, "DateLabel": list(df_sub["DateLabel"].cat.categories)}
-
-                        value_col = "mean"  # always match stats table
-
+                        value_col = "mean"
                         fig = go.Figure()
                         x_order = category_orders_bar[x_axis]
-
-                        for group in agg[group_axis].dropna().unique():
-                            df_g = agg[agg[group_axis] == group].copy()
+                        agg_plot = agg[agg["Treatment"].isin(treatments)].copy()
+                        for group in agg_plot[group_axis].dropna().unique():
+                            df_g = agg_plot[agg_plot[group_axis] == group].copy()
                             df_g = df_g.set_index(x_axis).reindex(x_order).reset_index()
                             error_array = None
                             if add_se:
@@ -360,12 +341,19 @@ if uploaded_file:
                                 textposition="outside" if add_letters else None,
                                 textfont=dict(color="black", size=12) if add_letters else None,
                             ))
-                        fig.update_layout(
-                            barmode="group",
-                            xaxis=dict(categoryorder="array", categoryarray=x_order),
-                        )
+                        fig.update_layout(barmode="group", xaxis=dict(categoryorder="array", categoryarray=x_order))
                     fig.update_yaxes(range=[axis_min, axis_max])
                     st.plotly_chart(fig, use_container_width=True)
+
+                # ----------------------
+                # Treatment Filter
+                # ----------------------
+                visible_treatments = st.multiselect(
+                    "Show treatments (does not recalc stats)",
+                    options=treatments,
+                    default=treatments,
+                    key=safe_key("visible_treatments", assess),
+                )
 
                 # ----------------------
                 # Statistics Table
@@ -407,12 +395,15 @@ if uploaded_file:
                                 else np.nan
                             )
                             wide_table[f"{date_label}"] = wide_table["Treatment"].map(means)
+                            wide_table[f"{date_label} S"] = wide
                             wide_table[f"{date_label} S"] = wide_table["Treatment"].map(letters).fillna("")
                             summaries[date_label] = {"P": p_val, "LSD": lsd_val, "d.f.": df_error, "%CV": cv}
                         else:
                             wide_table[f"{date_label}"] = np.nan
                             wide_table[f"{date_label} S"] = ""
                             summaries[date_label] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
+
+                    # Append summary rows (always based on full data)
                     summary_rows = []
                     for metric in ["P", "LSD", "d.f.", "%CV"]:
                         row = {"Treatment": metric}
@@ -420,23 +411,32 @@ if uploaded_file:
                             row[f"{date_label}"] = summaries[date_label][metric]
                             row[f"{date_label} S"] = ""
                         summary_rows.append(row)
+
                     wide_table = pd.concat([wide_table, pd.DataFrame(summary_rows)], ignore_index=True)
                     wide_table = wide_table.round(1)
+
+                    # Filtered view for display: show only selected treatments + summary rows
+                    summary_labels = {"P", "LSD", "d.f.", "%CV"}
+                    mask_visible = wide_table["Treatment"].isin(visible_treatments) | wide_table["Treatment"].isin(summary_labels)
+                    wide_table_view = wide_table[mask_visible].reset_index(drop=True)
+
                     st.dataframe(
-                        wide_table,
+                        wide_table_view,
                         use_container_width=True,
                         hide_index=True,
                         column_config={"Treatment": st.column_config.Column(pinned="left")},
                     )
+
+                    # Keep the full table for exports
                     all_tables[assess] = wide_table
 
                 # ----------------------
-                # Append this assessment to Word
+                # Append this assessment to Word (chart as currently shown + full table)
                 # ----------------------
                 word_doc.add_heading(f"Assessment: {assess}", level=2)
                 try:
                     img_buffer = BytesIO()
-                    pio.write_image(fig, img_buffer, format="png", scale=2)  # requires kaleido
+                    pio.write_image(fig, img_buffer, format="png", scale=2)  # requires 'kaleido'
                     img_buffer.seek(0)
                     word_doc.add_picture(img_buffer, width=Inches(6.5))
                     word_doc.add_paragraph()
@@ -445,11 +445,19 @@ if uploaded_file:
                         f"Could not export chart image for '{assess}' to Word (need 'kaleido'). "
                         f"Tables will still be exported."
                     )
-                add_dataframe_to_word(word_doc, wide_table)
+                # Add the full (unfiltered) table to Word
+                table = word_doc.add_table(rows=1, cols=len(wide_table.columns))
+                hdr_cells = table.rows[0].cells
+                for i, col in enumerate(wide_table.columns):
+                    hdr_cells[i].text = str(col)
+                for row in wide_table.itertuples(index=False):
+                    row_cells = table.add_row().cells
+                    for i, val in enumerate(row):
+                        row_cells[i].text = "" if (isinstance(val, float) and pd.isna(val)) else str(val)
                 word_doc.add_paragraph()
 
         # ----------------------
-        # Download buttons
+        # Download buttons (Excel: full tables; Word: charts as shown + full tables)
         # ----------------------
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
