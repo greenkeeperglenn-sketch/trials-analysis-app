@@ -395,7 +395,6 @@ if uploaded_file:
                                 else np.nan
                             )
                             wide_table[f"{date_label}"] = wide_table["Treatment"].map(means)
-                            wide_table[f"{date_label} S"] = wide
                             wide_table[f"{date_label} S"] = wide_table["Treatment"].map(letters).fillna("")
                             summaries[date_label] = {"P": p_val, "LSD": lsd_val, "d.f.": df_error, "%CV": cv}
                         else:
@@ -479,3 +478,4 @@ if uploaded_file:
             file_name="assessment_report.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+
