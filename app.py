@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import re
 from io import BytesIO
 import numpy as np
@@ -9,7 +10,7 @@ import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from itertools import combinations
 
-# NEW: for Word export
+# For Word export
 from docx import Document
 from docx.shared import Inches
 
@@ -17,28 +18,17 @@ st.set_page_config(layout="wide")
 st.title("Assessment Data Explorer")
 
 # ======================
-# Sidebar controls
+# Sidebar Global Settings
 # ======================
 st.sidebar.header("Global Settings")
 
 alpha_options = {
     "Fungicide (0.05)": 0.05,
     "Biologicals in lab (0.10)": 0.10,
-    "Biologicals in field (0.15)": 0.15
+    "Biologicals in field (0.15)": 0.15,
 }
 alpha_label = st.sidebar.radio("Significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
-
-view_mode = st.sidebar.radio("Boxplot grouping:", ["By Date", "By Treatment"])
-
-global_a_is_lowest = (
-    st.sidebar.radio(
-        "Lettering convention:",
-        ["Lowest = A", "Highest = A"],
-        index=0,
-        key="letters_global"
-    ) == "Lowest = A"
-)
 
 # ======================
 # Helpers
@@ -51,37 +41,30 @@ def parse_sheet_label_to_date(label: str):
     return None
 
 def chronological_labels(labels):
-    pairs = []
-    for lab in labels:
-        dt = parse_sheet_label_to_date(lab)
-        pairs.append((lab, dt))
+    pairs = [(lab, parse_sheet_label_to_date(lab)) for lab in labels]
     pairs_sorted = sorted(
-        pairs,
-        key=lambda x: (pd.isna(x[1]), x[1] if pd.notna(x[1]) else pd.Timestamp.max)
+        pairs, key=lambda x: (pd.isna(x[1]), x[1] if pd.notna(x[1]) else pd.Timestamp.max)
     )
     return [p[0] for p in pairs_sorted]
 
 def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=True):
     trts = list(means.index)
     letters = {t: set() for t in trts}
-
     nsd = pd.DataFrame(False, index=trts, columns=trts)
     for t in trts:
         nsd.loc[t, t] = True
-    t_crit = stats.t.ppf(1 - alpha/2, df_error) if df_error > 0 else np.nan
+    t_crit = stats.t.ppf(1 - alpha / 2, df_error) if df_error > 0 else np.nan
     for a, b in combinations(trts, 2):
         n1, n2 = rep_counts.get(a, 1), rep_counts.get(b, 1)
         if n1 > 0 and n2 > 0 and pd.notna(mse) and pd.notna(t_crit):
-            lsd_pair = t_crit * np.sqrt(mse * (1/n1 + 1/n2))
+            lsd_pair = t_crit * np.sqrt(mse * (1 / n1 + 1 / n2))
             diff = abs(means[a] - means[b])
             if diff <= lsd_pair:
                 nsd.loc[a, b] = True
                 nsd.loc[b, a] = True
-
     order = means.sort_values(ascending=a_is_lowest).index
     groups = []
     next_letter_code = ord("a")
-
     for t in order:
         joined_any = False
         for g in groups:
@@ -94,7 +77,6 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
             groups.append({"letter": new_letter, "members": [t]})
             letters[t].add(new_letter)
             next_letter_code += 1
-
         changed = True
         while changed:
             changed = False
@@ -105,19 +87,19 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
                             letters[cand].add(g["letter"])
                             g["members"].append(cand)
                             changed = True
+    return {t: "".join(sorted(v)) for t, v in letters.items()}, nsd
 
-    letters = {t: "".join(sorted(v)) for t, v in letters.items()}
-    return letters, nsd
+def safe_key(base, assess):
+    safe = re.sub(r"\W+", "_", str(assess))
+    return f"{base}_{safe}"
 
 # ======================
 # Upload & Parse
 # ======================
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+uploaded_file = st.sidebar.file_uploader("Upload Excel File", type=["xlsx"])
 if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
     all_data = []
-    assessment_cols = set()
-
     for sheet in xls.sheet_names:
         try:
             preview = pd.read_excel(xls, sheet_name=sheet, nrows=20)
@@ -129,33 +111,27 @@ if uploaded_file:
                     break
             if header_row is None:
                 continue
-
             df = pd.read_excel(xls, sheet_name=sheet, skiprows=header_row)
             df.columns = df.iloc[0]
             df = df.drop(df.index[0])
             df = df.dropna(axis=1, how="all")
             df.columns = [str(c).strip() for c in df.columns]
-
             col_map = {c: re.sub(r"\W+", "", c).lower() for c in df.columns}
             block_col = next((o for o, n in col_map.items() if "block" in n), None)
-            plot_col  = next((o for o, n in col_map.items() if "plot"  in n), None)
+            plot_col = next((o for o, n in col_map.items() if "plot" in n), None)
             treat_col = next((o for o, n in col_map.items() if "treat" in n or "trt" in n), None)
             if not (block_col and treat_col):
                 continue
-
             treat_idx = df.columns.get_loc(treat_col)
-            assess_list = df.columns[treat_idx+1:].tolist()
-            assessment_cols.update(assess_list)
-
+            assess_list = df.columns[treat_idx + 1 :].tolist()
             id_vars = [block_col, treat_col]
             if plot_col:
                 id_vars.append(plot_col)
-
             df_long = df.melt(
                 id_vars=id_vars,
                 value_vars=assess_list,
                 var_name="Assessment",
-                value_name="Value"
+                value_name="Value",
             )
             df_long = df_long.rename(columns={block_col: "Block", treat_col: "Treatment"})
             df_long["DateLabel"] = sheet
@@ -169,10 +145,10 @@ if uploaded_file:
     else:
         data = pd.concat(all_data, ignore_index=True)
 
-        # Treatment naming
+        # Treatments in sidebar
         treatments = sorted(data["Treatment"].dropna().unique(), key=lambda x: str(x))
-        st.subheader("Treatment Names")
-        names_input = st.text_area("Paste treatment names (one per line)", height=200)
+        st.sidebar.subheader("Treatment Names")
+        names_input = st.sidebar.text_area("Paste treatment names (one per line)", height=200)
         if names_input.strip():
             pasted = [n.strip() for n in names_input.split("\n") if n.strip()]
             if len(pasted) == len(treatments):
@@ -180,137 +156,213 @@ if uploaded_file:
                 data["Treatment"] = data["Treatment"].map(mapping).fillna(data["Treatment"])
                 treatments = pasted
             else:
-                st.warning("Number of names pasted does not match detected treatments!")
+                st.sidebar.warning("Number of names pasted does not match detected treatments!")
 
-        selected_assessments = st.multiselect("Select assessments:", sorted(set(data["Assessment"].unique())))
+        # Blocks in sidebar
+        blocks = sorted(data["Block"].dropna().unique()) if "Block" in data.columns else []
+        sel_blocks = st.sidebar.multiselect("Include Blocks", blocks, default=blocks, key="global_blocks")
 
-        color_map = {t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)] for i, t in enumerate(treatments)}
+        # Assessments in sidebar
+        assessments_all = sorted(set(data["Assessment"].unique()))
+        selected_assessments = st.sidebar.multiselect("Select assessments", assessments_all)
+
+        # Date ordering
         date_labels_all = data["DateLabel"].dropna().unique().tolist()
         date_labels_ordered = chronological_labels(date_labels_all)
 
+        # Apply global block filter
+        if sel_blocks:
+            data = data[data["Block"].isin(sel_blocks)]
+
+        color_map = {
+            t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
+            for i, t in enumerate(treatments)
+        }
+
         all_tables = {}
-        word_doc = Document()  # Word doc for export
+        word_doc = Document()
 
+        # ======================
+        # Loop through assessments
+        # ======================
         for assess in selected_assessments:
-            st.subheader(f"Assessment: {assess}")
-            df_sub = data[data["Assessment"] == assess].copy()
-            df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
-            df_sub = df_sub.dropna(subset=["Value"])
+            with st.expander(f"Assessment: {assess}", expanded=False):
 
-            # Block selector
-            if "Block" in df_sub.columns:
-                blocks = sorted(df_sub["Block"].dropna().unique())
-                sel_blocks = st.multiselect(
-                    f"Include Blocks for {assess}",
-                    blocks,
-                    default=blocks,
-                    key=f"blocks_{assess.replace(' ', '_')}"
-                )
-                if not sel_blocks:
-                    st.warning("No blocks selected. Please select at least one block to see results.")
-                    continue
-                df_sub = df_sub[df_sub["Block"].isin(sel_blocks)]
-
-            # Boxplot
-            if view_mode == "By Date":
-                fig = px.box(df_sub, x="DateLabel", y="Value", color="Treatment",
-                             color_discrete_map=color_map,
-                             category_orders={"DateLabel": date_labels_ordered, "Treatment": treatments})
-            else:
-                fig = px.box(df_sub, x="Treatment", y="Value", color="DateLabel",
-                             category_orders={"Treatment": treatments, "DateLabel": date_labels_ordered})
-            fig.update_traces(boxpoints=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Stats table
-            wide_table = pd.DataFrame({"Treatment": treatments})
-            summaries = {}
-
-            for date_label in date_labels_ordered:
-                df_date = df_sub[df_sub["DateLabel"] == date_label].copy()
-                if df_date.empty:
-                    wide_table[f"{date_label}"] = np.nan
-                    wide_table[f"{date_label} S"] = ""
-                    summaries[date_label] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
-                    continue
-
-                df_date["Value"] = pd.to_numeric(df_date["Value"], errors="coerce")
-                df_date = df_date.dropna(subset=["Value"])
-                if df_date["Treatment"].nunique() > 1 and len(df_date) > 1:
-                    means = df_date.groupby("Treatment")["Value"].mean()
-                    rep_counts = df_date["Treatment"].value_counts().to_dict()
-                    try:
-                        if "Block" in df_date.columns:
-                            model = ols("Value ~ C(Treatment) + C(Block)", data=df_date).fit()
-                        else:
-                            model = ols("Value ~ C(Treatment)", data=df_date).fit()
-                        anova = sm.stats.anova_lm(model, typ=2)
-                        df_error = float(model.df_resid)
-                        mse = float(anova.loc["Residual", "sum_sq"] / df_error)
-                        p_val = float(anova.loc["C(Treatment)", "PR(>F)"])
-                    except Exception:
-                        df_error, mse, p_val = np.nan, np.nan, np.nan
-                    cv = 100 * np.sqrt(mse) / means.mean() if pd.notna(mse) and means.mean() != 0 else np.nan
-
-                    letters, nsd = generate_cld_overlap(
-                        means, mse, df_error, alpha_choice, rep_counts,
-                        a_is_lowest=global_a_is_lowest
+                # ----------------------
+                # Chart Settings
+                # ----------------------
+                with st.expander("Chart Settings", expanded=False):
+                    view_mode_chart = st.radio(
+                        "Grouping",
+                        ["By Date", "By Treatment"],
+                        key=safe_key("viewmode", assess),
                     )
-                    n_avg = np.mean(list(rep_counts.values()))
-                    lsd_val = stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/n_avg) if pd.notna(mse) else np.nan
-                    wide_table[f"{date_label}"] = wide_table["Treatment"].map(means)
-                    wide_table[f"{date_label} S"] = wide_table["Treatment"].map(letters).fillna("")
-                    summaries[date_label] = {"P": p_val, "LSD": lsd_val, "d.f.": df_error, "%CV": cv}
-                else:
-                    wide_table[f"{date_label}"] = np.nan
-                    wide_table[f"{date_label} S"] = ""
-                    summaries[date_label] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
+                    a_is_lowest_chart = (
+                        st.radio(
+                            "Lettering convention",
+                            ["Lowest = A", "Highest = A"],
+                            index=0,
+                            key=safe_key("letters_mode", assess),
+                        )
+                        == "Lowest = A"
+                    )
+                    axis_min = st.number_input(
+                        "Y-axis minimum",
+                        value=int(data["Value"].min()) if not data["Value"].empty else 0,
+                        step=1,
+                        key=safe_key("ymin", assess),
+                    )
+                    axis_max = st.number_input(
+                        "Y-axis maximum",
+                        value=int(data["Value"].max()) if not data["Value"].empty else 100,
+                        step=1,
+                        key=safe_key("ymax", assess),
+                    )
+                    chart_mode = st.radio(
+                        "Chart type",
+                        ["Boxplot", "Bar chart"],
+                        key=safe_key("chartmode", assess),
+                    )
+                    add_se = add_lsd = add_letters = False
+                    if chart_mode == "Bar chart":
+                        add_se = st.checkbox("Add SE error bars", key=safe_key("se", assess))
+                        add_lsd = st.checkbox("Add LSD error bars", key=safe_key("lsd", assess))
+                        add_letters = st.checkbox("Add statistical letters", key=safe_key("letters", assess))
 
-            summary_rows = []
-            for metric in ["P", "LSD", "d.f.", "%CV"]:
-                row = {"Treatment": metric}
-                for date_label in date_labels_ordered:
-                    row[f"{date_label}"] = summaries[date_label][metric]
-                    row[f"{date_label} S"] = ""
-                summary_rows.append(row)
-            wide_table = pd.concat([wide_table, pd.DataFrame(summary_rows)], ignore_index=True)
-            wide_table = wide_table.round(1)
+                df_sub = data[data["Assessment"] == assess].copy()
+                df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
+                df_sub = df_sub.dropna(subset=["Value"])
+                df_sub["DateLabel"] = pd.Categorical(
+                    df_sub["DateLabel"], categories=date_labels_ordered, ordered=True
+                )
 
-            st.dataframe(wide_table, use_container_width=True, hide_index=True)
+                # ----------------------
+                # Chart
+                # ----------------------
+                with st.expander("Chart", expanded=True):
+                    if chart_mode == "Boxplot":
+                        if view_mode_chart == "By Date":
+                            fig = px.box(
+                                df_sub,
+                                x="DateLabel",
+                                y="Value",
+                                color="Treatment",
+                                color_discrete_map=color_map,
+                                category_orders={
+                                    "DateLabel": date_labels_ordered,
+                                    "Treatment": treatments,
+                                },
+                            )
+                        else:
+                            fig = px.box(
+                                df_sub,
+                                x="Treatment",
+                                y="Value",
+                                color="DateLabel",
+                                category_orders={
+                                    "Treatment": treatments,
+                                    "DateLabel": date_labels_ordered,
+                                },
+                            )
+                        fig.update_traces(boxpoints=False)
+                    else:
+                        # bar chart simplified for clarity — keep same structure as before
+                        fig = px.bar(
+                            df_sub,
+                            x="DateLabel" if view_mode_chart == "By Date" else "Treatment",
+                            y="Value",
+                            color="Treatment" if view_mode_chart == "By Date" else "DateLabel",
+                            barmode="group",
+                            category_orders={
+                                "DateLabel": date_labels_ordered,
+                                "Treatment": treatments,
+                            },
+                        )
+                    fig.update_yaxes(range=[axis_min, axis_max])
+                    st.plotly_chart(fig, use_container_width=True)
 
-            all_tables[assess] = wide_table
+                # ----------------------
+                # Statistics Table
+                # ----------------------
+                with st.expander("Statistics Table", expanded=True):
+                    wide_table = pd.DataFrame({"Treatment": treatments})
+                    summaries = {}
+                    for date_label in date_labels_ordered:
+                        df_date = df_sub[df_sub["DateLabel"] == date_label].copy()
+                        if df_date.empty:
+                            wide_table[f"{date_label}"] = np.nan
+                            wide_table[f"{date_label} S"] = ""
+                            summaries[date_label] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
+                            continue
+                        df_date["Value"] = pd.to_numeric(df_date["Value"], errors="coerce")
+                        df_date = df_date.dropna(subset=["Value"])
+                        if df_date["Treatment"].nunique() > 1 and len(df_date) > 1:
+                            means = df_date.groupby("Treatment")["Value"].mean()
+                            rep_counts = df_date["Treatment"].value_counts().to_dict()
+                            try:
+                                if "Block" in df_date.columns:
+                                    model = ols("Value ~ C(Treatment) + C(Block)", data=df_date).fit()
+                                else:
+                                    model = ols("Value ~ C(Treatment)", data=df_date).fit()
+                                anova = sm.stats.anova_lm(model, typ=2)
+                                df_error = float(model.df_resid)
+                                mse = float(anova.loc["Residual", "sum_sq"] / df_error)
+                                p_val = float(anova.loc["C(Treatment)", "PR(>F)"])
+                            except Exception:
+                                df_error, mse, p_val = np.nan, np.nan, np.nan
+                            cv = 100 * np.sqrt(mse) / means.mean() if pd.notna(mse) and means.mean() != 0 else np.nan
+                            letters, _ = generate_cld_overlap(
+                                means, mse, df_error, alpha_choice, rep_counts, a_is_lowest=a_is_lowest_chart
+                            )
+                            n_avg = np.mean(list(rep_counts.values()))
+                            lsd_val = (
+                                stats.t.ppf(1 - alpha_choice / 2, df_error) * np.sqrt(2 * mse / n_avg)
+                                if pd.notna(mse)
+                                else np.nan
+                            )
+                            wide_table[f"{date_label}"] = wide_table["Treatment"].map(means)
+                            wide_table[f"{date_label} S"] = wide_table["Treatment"].map(letters).fillna("")
+                            summaries[date_label] = {"P": p_val, "LSD": lsd_val, "d.f.": df_error, "%CV": cv}
+                        else:
+                            wide_table[f"{date_label}"] = np.nan
+                            wide_table[f"{date_label} S"] = ""
+                            summaries[date_label] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
+                    summary_rows = []
+                    for metric in ["P", "LSD", "d.f.", "%CV"]:
+                        row = {"Treatment": metric}
+                        for date_label in date_labels_ordered:
+                            row[f"{date_label}"] = summaries[date_label][metric]
+                            row[f"{date_label} S"] = ""
+                        summary_rows.append(row)
+                    wide_table = pd.concat([wide_table, pd.DataFrame(summary_rows)], ignore_index=True)
+                    wide_table = wide_table.round(1)
+                    st.dataframe(
+                        wide_table,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={"Treatment": st.column_config.Column(pinned="left")},
+                    )
+                    all_tables[assess] = wide_table
 
-            # === Add to Word doc ===
-            word_doc.add_heading(f"Assessment: {assess}", level=2)
-
-            img_buffer = BytesIO()
-            fig.write_image(img_buffer, format="png")  # safer than fig.to_image
-            img_buffer.seek(0)
-            word_doc.add_picture(img_buffer, width=Inches(5))
-            word_doc.add_paragraph()
-
-            table = word_doc.add_table(rows=1, cols=len(wide_table.columns))
-            hdr_cells = table.rows[0].cells
-            for i, col in enumerate(wide_table.columns):
-                hdr_cells[i].text = str(col)
-            for row in wide_table.values.tolist():
-                row_cells = table.add_row().cells
-                for i, val in enumerate(row):
-                    row_cells[i].text = str(val)
-            word_doc.add_paragraph()
-
-        # === Download buttons ===
+        # ----------------------
+        # Download buttons
+        # ----------------------
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
             for assess, table in all_tables.items():
                 table.round(1).to_excel(writer, sheet_name=assess[:30], index=False)
-        st.download_button("Download Tables (Excel)", data=buffer,
-                           file_name="assessment_tables.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
+        st.download_button(
+            "Download Tables (Excel)",
+            data=buffer,
+            file_name="assessment_tables.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
         word_buffer = BytesIO()
         word_doc.save(word_buffer)
         word_buffer.seek(0)
-        st.download_button("Download Report (Word)", data=word_buffer,
-                           file_name="assessment_report.docx",
-                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        st.download_button(
+            "Download Report (Word)",
+            data=word_buffer,
+            file_name="assessment_report.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
