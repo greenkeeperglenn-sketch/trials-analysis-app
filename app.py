@@ -255,7 +255,7 @@ if uploaded_file:
                 # ----------------------
                 with st.expander("Chart", expanded=True):
                     if chart_mode == "Boxplot":
-                        df_plot = df_sub[df_sub["Treatment"].isin(treatments)].copy()
+                        df_plot = df_sub[df_sub["Treatment"].isin(visible_treatments)].copy()
                         if view_mode_chart == "By Date":
                             fig = px.box(
                                 df_plot,
@@ -322,7 +322,7 @@ if uploaded_file:
                         value_col = "mean"
                         fig = go.Figure()
                         x_order = category_orders_bar[x_axis]
-                        agg_plot = agg[agg["Treatment"].isin(treatments)].copy()
+                        agg_plot = agg[agg["Treatment"].isin(visible_treatments)].copy()
                         for group in agg_plot[group_axis].dropna().unique():
                             df_g = agg_plot[agg_plot[group_axis] == group].copy()
                             df_g = df_g.set_index(x_axis).reindex(x_order).reset_index()
@@ -478,4 +478,5 @@ if uploaded_file:
             file_name="assessment_report.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+
 
