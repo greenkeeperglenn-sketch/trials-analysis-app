@@ -99,6 +99,11 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
     letters = {t: "".join(sorted(v)) for t, v in letters.items()}
     return letters, nsd
 
+def safe_key(base, assess):
+    """Generate safe unique keys for widgets"""
+    safe = re.sub(r'\W+', '_', str(assess))  # replace non-word chars with _
+    return f"{base}_{safe}"
+
 # ======================
 # Upload & Parse
 # ======================
@@ -194,7 +199,7 @@ if uploaded_file:
                     f"Include Blocks for {assess}",
                     blocks,
                     default=blocks,
-                    key=f"blocks_{assess.replace(' ', '_')}"
+                    key=safe_key("blocks", assess)
                 )
                 if not sel_blocks:
                     st.warning("No blocks selected. Please select at least one block to see results.")
@@ -205,7 +210,7 @@ if uploaded_file:
             view_mode_chart = st.radio(
                 f"Boxplot grouping for {assess}",
                 ["By Date", "By Treatment"],
-                key=f"viewmode_{assess}"
+                key=safe_key("viewmode", assess)
             )
 
             a_is_lowest_chart = (
@@ -213,7 +218,7 @@ if uploaded_file:
                     f"Lettering convention for {assess}",
                     ["Lowest = A", "Highest = A"],
                     index=0,
-                    key=f"letters_{assess}"
+                    key=safe_key("letters_mode", assess)
                 ) == "Lowest = A"
             )
 
@@ -221,20 +226,20 @@ if uploaded_file:
                 f"Y-axis minimum ({assess})",
                 value=int(df_sub["Value"].min()) if not df_sub["Value"].empty else 0,
                 step=1,
-                key=f"ymin_{assess}"
+                key=safe_key("ymin", assess)
             )
             axis_max = st.number_input(
                 f"Y-axis maximum ({assess})",
                 value=int(df_sub["Value"].max()) if not df_sub["Value"].empty else 100,
                 step=1,
-                key=f"ymax_{assess}"
+                key=safe_key("ymax", assess)
             )
 
             # Chart options per assessment
             chart_mode = st.radio(
                 "Chart type",
                 ["Boxplot", "Bar chart"],
-                key=f"chartmode_{assess}"
+                key=safe_key("chartmode", assess)
             )
 
             add_se = False
@@ -242,9 +247,9 @@ if uploaded_file:
             add_letters = False
 
             if chart_mode == "Bar chart":
-                add_se = st.checkbox("Add SE error bars", key=f"se_{assess}")
-                add_lsd = st.checkbox("Add LSD error bars", key=f"lsd_{assess}")
-                add_letters = st.checkbox("Add statistical letters", key=f"letters_{assess}")
+                add_se = st.checkbox("Add SE error bars", key=safe_key("se", assess))
+                add_lsd = st.checkbox("Add LSD error bars", key=safe_key("lsd", assess))
+                add_letters = st.checkbox("Add statistical letters", key=safe_key("letters", assess))
 
             # Boxplot
             if chart_mode == "Boxplot":
