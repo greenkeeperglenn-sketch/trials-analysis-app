@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-from helpers import safe_key
-from data_loader import load_data
-from charts import make_boxplot, make_barchart
-from stats import build_stats_table
-from exports import export_tables_to_excel
+# Local modules
+import charts
+import stats
+import data_loader
+import helpers
+import exports
 
 st.set_page_config(layout="wide")
 st.title("Assessment Data Explorer")
@@ -26,7 +27,7 @@ alpha_choice = alpha_options[alpha_label]
 # ----------------------
 # Load data
 # ----------------------
-data, treatments, date_labels_ordered = load_data()
+data, treatments, date_labels_ordered = data_loader.load_data()
 
 if data is not None:
     selected_assessments = st.sidebar.multiselect(
@@ -58,29 +59,29 @@ if data is not None:
                 chart_mode = st.radio(
                     "Chart type",
                     ["Boxplot", "Bar chart"],
-                    key=safe_key("chartmode", assess)
+                    key=helpers.safe_key("chartmode", assess)
                 )
                 view_mode_chart = st.radio(
                     "Grouping",
                     ["By Date", "By Treatment"],
-                    key=safe_key("viewmode", assess)
+                    key=helpers.safe_key("viewmode", assess)
                 )
                 a_is_lowest_chart = st.radio(
                     "Lettering convention",
                     ["Lowest = A", "Highest = A"],
-                    key=safe_key("letters", assess)
+                    key=helpers.safe_key("letters", assess)
                 ) == "Lowest = A"
 
                 # Bar chart specific toggles
                 add_se = add_lsd = add_letters = False
                 if chart_mode == "Bar chart":
-                    add_se = st.checkbox("Add SE error bars", value=True, key=safe_key("se", assess))
-                    add_lsd = st.checkbox("Add LSD error bars", value=False, key=safe_key("lsd", assess))
-                    add_letters = st.checkbox("Add statistical letters", value=True, key=safe_key("letters_check", assess))
+                    add_se = st.checkbox("Add SE error bars", value=True, key=helpers.safe_key("se", assess))
+                    add_lsd = st.checkbox("Add LSD error bars", value=False, key=helpers.safe_key("lsd", assess))
+                    add_letters = st.checkbox("Add statistical letters", value=True, key=helpers.safe_key("letters_check", assess))
 
                 # Axis range controls
-                y_min = st.number_input("Y-axis minimum", value=0, step=1, key=safe_key("ymin", assess))
-                y_max = st.number_input("Y-axis maximum", value=100, step=1, key=safe_key("ymax", assess))
+                y_min = st.number_input("Y-axis minimum", value=0, step=1, key=helpers.safe_key("ymin", assess))
+                y_max = st.number_input("Y-axis maximum", value=100, step=1, key=helpers.safe_key("ymax", assess))
 
             # ----------------------
             # Treatment filter
@@ -89,7 +90,7 @@ if data is not None:
                 "Show treatments",
                 options=treatments,
                 default=treatments,
-                key=safe_key("visible_treatments", assess),
+                key=helpers.safe_key("visible_treatments", assess),
             )
 
             # Prepare data
@@ -107,12 +108,12 @@ if data is not None:
             # ----------------------
             with st.expander("Chart", expanded=True):
                 if chart_mode == "Boxplot":
-                    fig = make_boxplot(
+                    fig = charts.make_boxplot(
                         df_sub, treatments, date_labels_ordered,
                         view_mode_chart, visible_treatments, color_map
                     )
                 else:
-                    fig = make_barchart(
+                    fig = charts.make_barchart(
                         df_sub, treatments, date_labels_ordered,
                         view_mode_chart, visible_treatments,
                         alpha_choice, a_is_lowest_chart,
@@ -130,7 +131,7 @@ if data is not None:
             # ----------------------
             with st.expander("Statistics Table", expanded=False):
                 df_stats = df_sub[df_sub["Treatment"].isin(visible_treatments)].copy()
-                wide_table, styled_table = build_stats_table(
+                wide_table, styled_table = stats.build_stats_table(
                     df_stats, visible_treatments, date_labels_ordered,
                     alpha_choice, a_is_lowest_chart
                 )
@@ -149,4 +150,4 @@ if data is not None:
     # ----------------------
     # Exports
     # ----------------------
-    export_tables_to_excel(all_tables)
+    exports.export_tables_to_excel(all_tables)
