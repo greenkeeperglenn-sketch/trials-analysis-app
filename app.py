@@ -254,12 +254,18 @@ if uploaded_file:
             # Boxplot
             if chart_mode == "Boxplot":
                 if view_mode_chart == "By Date":
-                    fig = px.box(df_sub, x="DateLabel", y="Value", color="Treatment",
-                                 color_discrete_map=color_map,
-                                 category_orders={"DateLabel": date_labels_ordered, "Treatment": treatments})
+                    fig = px.box(
+                        df_sub, x="DateLabel", y="Value", color="Treatment",
+                        color_discrete_map=color_map,
+                        category_orders={"DateLabel": date_labels_ordered,
+                                         "Treatment": treatments}
+                    )
                 else:
-                    fig = px.box(df_sub, x="Treatment", y="Value", color="DateLabel",
-                                 category_orders={"Treatment": treatments, "DateLabel": date_labels_ordered})
+                    fig = px.box(
+                        df_sub, x="Treatment", y="Value", color="DateLabel",
+                        category_orders={"Treatment": treatments,
+                                         "DateLabel": date_labels_ordered}
+                    )
                 fig.update_traces(boxpoints=False)
 
             # Bar chart
@@ -325,29 +331,11 @@ if uploaded_file:
                         y=df_t["Value_median"],
                         name=t,
                         marker_color=color_map[t],
-                        error_y=error_y
+                        error_y=error_y,
+                        text=[letters_dict.get(d, {}).get(t, "") if add_letters else "" for d in df_t["DateLabel"]],
+                        textposition="outside",
+                        textfont=dict(color="black", size=12)
                     ))
-
-                    # Place letters directly above the correct bar
-                    if add_letters:
-                        for j, row in df_t.iterrows():
-                            letter = letters_dict.get(row["DateLabel"], {}).get(t, "")
-                            if letter:
-                                err = 0
-                                if add_se and "se" in row:
-                                    err = row["se"]
-                                elif add_lsd and "LSD" in df_t.columns:
-                                    err = df_t["LSD"].iloc[0]
-                                y_pos = row["Value_median"] + err + 2
-                                fig.add_annotation(
-                                    x=row["DateLabel"],
-                                    y=y_pos,
-                                    text=letter,
-                                    showarrow=False,
-                                    yanchor="bottom",
-                                    xanchor="center",
-                                    font=dict(color="black", size=12)
-                                )
 
                 fig.update_layout(barmode="group")
 
