@@ -186,6 +186,9 @@ if uploaded_file:
             df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
             df_sub = df_sub.dropna(subset=["Value"])
 
+            # Force DateLabel into categorical with chronological order
+            df_sub["DateLabel"] = pd.Categorical(df_sub["DateLabel"], categories=date_labels_ordered, ordered=True)
+
             # Block selector
             if "Block" in df_sub.columns:
                 blocks = sorted(df_sub["Block"].dropna().unique())
