@@ -35,7 +35,7 @@ def load_data():
             df.columns = [str(c).strip() for c in df.columns]
 
             # Identify key columns
-            col_map = {c: re.sub(r"\\W+", "", c).lower() for c in df.columns}
+            col_map = {c: re.sub(r"\W+", "", c).lower() for c in df.columns}
             block_col = next((o for o, n in col_map.items() if "block" in n), None)
             plot_col  = next((o for o, n in col_map.items() if "plot" in n), None)
             treat_col = next((o for o, n in col_map.items() if "treat" in n or "trt" in n), None)
@@ -78,13 +78,19 @@ def load_data():
     st.sidebar.subheader("Treatment Names")
     names_input = st.sidebar.text_area("Paste treatment names (one per line)", height=200)
     if names_input.strip():
-        pasted = [n.strip() for n in names_input.split("\\n") if n.strip()]
+        pasted = [n.strip() for n in names_input.splitlines() if n.strip()]  # safer parsing
+        pasted = list(dict.fromkeys(pasted))  # remove duplicates while keeping order
+
         if len(pasted) == len(treatments):
             mapping = dict(zip(treatments, pasted))
             data["Treatment"] = data["Treatment"].map(mapping).fillna(data["Treatment"])
             treatments = pasted
         else:
-            st.sidebar.warning("Number of names pasted does not match detected treatments!")
+            st.sidebar.warning(
+                f"⚠️ Number of names pasted ({len(pasted)}) does not match detected treatments ({len(treatments)})"
+            )
+            st.sidebar.write("Detected treatments:", treatments)
+            st.sidebar.write("Pasted treatments:", pasted)
 
     # Chronological ordering of sheets
     date_labels_all = data["DateLabel"].dropna().unique().tolist()
