@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 import re
 from io import BytesIO
 import numpy as np
@@ -93,6 +94,16 @@ def safe_key(base, assess):
     safe = re.sub(r"\W+", "_", str(assess))
     return f"{base}_{safe}"
 
+def add_dataframe_to_word(doc: Document, df: pd.DataFrame):
+    table = doc.add_table(rows=1, cols=len(df.columns))
+    hdr_cells = table.rows[0].cells
+    for i, col in enumerate(df.columns):
+        hdr_cells[i].text = str(col)
+    for row in df.itertuples(index=False):
+        row_cells = table.add_row().cells
+        for i, val in enumerate(row):
+            row_cells[i].text = "" if (pd.isna(val) if isinstance(val, float) else False) else str(val)
+
 # ======================
 # Upload & Parse
 # ======================
@@ -123,7 +134,7 @@ if uploaded_file:
             if not (block_col and treat_col):
                 continue
             treat_idx = df.columns.get_loc(treat_col)
-            assess_list = df.columns[treat_idx + 1 :].tolist()
+            assess_list = df.columns[treat_idx + 1:].tolist()
             id_vars = [block_col, treat_col]
             if plot_col:
                 id_vars.append(plot_col)
@@ -181,6 +192,7 @@ if uploaded_file:
 
         all_tables = {}
         word_doc = Document()
+        word_doc.add_heading("Assessment Report", level=1)
 
         # ======================
         # Loop through assessments
@@ -229,6 +241,7 @@ if uploaded_file:
                         add_lsd = st.checkbox("Add LSD error bars", key=safe_key("lsd", assess))
                         add_letters = st.checkbox("Add statistical letters", key=safe_key("letters", assess))
 
+                # Prepare filtered data for this assessment
                 df_sub = data[data["Assessment"] == assess].copy()
                 df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
                 df_sub = df_sub.dropna(subset=["Value"])
@@ -266,17 +279,90 @@ if uploaded_file:
                             )
                         fig.update_traces(boxpoints=False)
                     else:
-                        # bar chart simplified for clarity — keep same structure as before
-                        fig = px.bar(
-                            df_sub,
-                            x="DateLabel" if view_mode_chart == "By Date" else "Treatment",
-                            y="Value",
-                            color="Treatment" if view_mode_chart == "By Date" else "DateLabel",
+                        # ---------------------------
+                        # Grouped BAR CHART: MEANS + SE/LSD + Letters
+                        # ---------------------------
+                        agg = (
+                            df_sub
+                            .groupby(["DateLabel", "Treatment"])["Value"]
+                            .agg(mean="mean", count="count", std="std")
+                            .reset_index()
+                        )
+                        agg["se"] = agg["std"] / np.sqrt(agg["count"])
+
+                        # Letters & LSD per date
+                        letters_dict = {}
+                        lsd_by_date = {}
+                        for date_label in list(df_sub["DateLabel"].cat.categories):
+                            df_date = df_sub[df_sub["DateLabel"] == date_label]
+                            if df_date["Treatment"].nunique() > 1 and len(df_date) > 1:
+                                try:
+                                    if "Block" in df_date.columns:
+                                        model = ols("Value ~ C(Treatment) + C(Block)", data=df_date).fit()
+                                    else:
+                                        model = ols("Value ~ C(Treatment)", data=df_date).fit()
+                                    anova = sm.stats.anova_lm(model, typ=2)
+                                    df_error = float(model.df_resid)
+                                    mse = float(anova.loc["Residual", "sum_sq"] / df_error)
+                                    means_date = df_date.groupby("Treatment")["Value"].mean()
+                                    rep_counts_date = df_date["Treatment"].value_counts().to_dict()
+                                    letters, _ = generate_cld_overlap(
+                                        means_date, mse, df_error, alpha_choice, rep_counts_date,
+                                        a_is_lowest=a_is_lowest_chart
+                                    )
+                                    letters_dict[date_label] = letters
+                                    n_avg = np.mean(list(rep_counts_date.values()))
+                                    lsd_val = stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/n_avg)
+                                    lsd_by_date[date_label] = lsd_val
+                                except Exception:
+                                    letters_dict[date_label] = {}
+                                    lsd_by_date[date_label] = np.nan
+                            else:
+                                letters_dict[date_label] = {}
+                                lsd_by_date[date_label] = np.nan
+
+                        agg["letters"] = agg.apply(
+                            lambda r: letters_dict.get(r["DateLabel"], {}).get(r["Treatment"], ""),
+                            axis=1
+                        )
+                        agg["LSD"] = agg["DateLabel"].map(lsd_by_date)
+
+                        # X/grouping axes
+                        if view_mode_chart == "By Date":
+                            x_axis = "DateLabel"
+                            group_axis = "Treatment"
+                            category_orders_bar = {"DateLabel": list(df_sub["DateLabel"].cat.categories), "Treatment": treatments}
+                        else:
+                            x_axis = "Treatment"
+                            group_axis = "DateLabel"
+                            category_orders_bar = {"Treatment": treatments, "DateLabel": list(df_sub["DateLabel"].cat.categories)}
+
+                        value_col = "mean"  # always match stats table
+
+                        fig = go.Figure()
+                        x_order = category_orders_bar[x_axis]
+
+                        for group in agg[group_axis].dropna().unique():
+                            df_g = agg[agg[group_axis] == group].copy()
+                            df_g = df_g.set_index(x_axis).reindex(x_order).reset_index()
+                            error_array = None
+                            if add_se:
+                                error_array = df_g["se"].to_numpy()
+                            elif add_lsd:
+                                error_array = df_g["LSD"].to_numpy()
+                            texts = df_g["letters"].tolist() if add_letters else None
+                            fig.add_trace(go.Bar(
+                                x=df_g[x_axis],
+                                y=df_g[value_col],
+                                name=str(group),
+                                error_y=dict(type="data", array=error_array, visible=True) if error_array is not None else None,
+                                text=texts,
+                                textposition="outside" if add_letters else None,
+                                textfont=dict(color="black", size=12) if add_letters else None,
+                            ))
+                        fig.update_layout(
                             barmode="group",
-                            category_orders={
-                                "DateLabel": date_labels_ordered,
-                                "Treatment": treatments,
-                            },
+                            xaxis=dict(categoryorder="array", categoryarray=x_order),
                         )
                     fig.update_yaxes(range=[axis_min, axis_max])
                     st.plotly_chart(fig, use_container_width=True)
@@ -344,6 +430,24 @@ if uploaded_file:
                     )
                     all_tables[assess] = wide_table
 
+                # ----------------------
+                # Append this assessment to Word
+                # ----------------------
+                word_doc.add_heading(f"Assessment: {assess}", level=2)
+                try:
+                    img_buffer = BytesIO()
+                    pio.write_image(fig, img_buffer, format="png", scale=2)  # requires kaleido
+                    img_buffer.seek(0)
+                    word_doc.add_picture(img_buffer, width=Inches(6.5))
+                    word_doc.add_paragraph()
+                except Exception:
+                    st.warning(
+                        f"Could not export chart image for '{assess}' to Word (need 'kaleido'). "
+                        f"Tables will still be exported."
+                    )
+                add_dataframe_to_word(word_doc, wide_table)
+                word_doc.add_paragraph()
+
         # ----------------------
         # Download buttons
         # ----------------------
@@ -357,6 +461,7 @@ if uploaded_file:
             file_name="assessment_tables.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+
         word_buffer = BytesIO()
         word_doc.save(word_buffer)
         word_buffer.seek(0)
