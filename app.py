@@ -248,11 +248,9 @@ if uploaded_file:
                 merged = medians.merge(means, on=["DateLabel", "Treatment"], suffixes=("_median", "_mean"))
                 merged = merged.merge(rep_counts, on=["DateLabel", "Treatment"])
 
-                error_y = None
                 letters_dict = {}
 
                 if add_se or add_lsd or add_letters:
-                    # Compute ANOVA per date for LSD & letters
                     for date_label in date_labels_ordered:
                         df_date = df_sub[df_sub["DateLabel"] == date_label]
                         if df_date["Treatment"].nunique() > 1 and len(df_date) > 1:
@@ -281,7 +279,6 @@ if uploaded_file:
                             except Exception:
                                 continue
 
-                # Add SE calculation
                 if add_se:
                     df_se = df_sub.groupby(["DateLabel", "Treatment"])["Value"].agg(["mean", "std", "count"]).reset_index()
                     df_se["se"] = df_se["std"] / np.sqrt(df_se["count"])
@@ -289,13 +286,16 @@ if uploaded_file:
 
                 fig = go.Figure()
 
+                y_max = df_sub["Value"].max()
+                offset = 0.05 * y_max if pd.notna(y_max) else 1
+
                 for i, t in enumerate(treatments):
                     df_t = merged[merged["Treatment"] == t]
                     if df_t.empty:
                         continue
 
                     error_y = None
-                    if add_se:
+                    if add_se and "se" in df_t.columns:
                         error_y = dict(type="data", array=df_t["se"], visible=True)
                     elif add_lsd and "LSD" in df_t.columns:
                         error_y = dict(type="constant", value=df_t["LSD"].iloc[0], visible=True)
@@ -308,24 +308,23 @@ if uploaded_file:
                         error_y=error_y
                     ))
 
-                    if add_letters and t in letters_dict.get(df_t["DateLabel"].iloc[0], {}):
+                    # Place letters above bars
+                    if add_letters:
                         for j, row in df_t.iterrows():
                             letter = letters_dict.get(row["DateLabel"], {}).get(t, "")
                             if letter:
                                 fig.add_annotation(
-                                    x=row["DateLabel"], y=row["Value_median"],
+                                    x=row["DateLabel"],
+                                    y=row["Value_median"] + offset,
                                     text=letter,
                                     showarrow=False,
-                                    yanchor="bottom"
+                                    yanchor="bottom",
+                                    xanchor="center",
+                                    font=dict(color="black", size=12)
                                 )
 
                 fig.update_layout(barmode="group")
 
             st.plotly_chart(fig, use_container_width=True)
 
-            # Stats table (same as before) ...
-            # (Keeping your existing table-generation code here)
-
-            # === Word export also unchanged ===
-
-        # === Download buttons (Excel/Word) unchanged ===
+            # === Stats table & Word export remain unchanged ===
