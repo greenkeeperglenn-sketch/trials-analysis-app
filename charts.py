@@ -21,7 +21,7 @@ def make_boxplot(df_sub, treatments, date_labels_ordered, view_mode_chart, visib
 
     fig.update_traces(boxpoints=False)
     return fig
-  def make_barchart(df_sub, treatments, date_labels_ordered,
+def make_barchart(df_sub, treatments, date_labels_ordered,
                   view_mode_chart, visible_treatments,
                   alpha_choice, a_is_lowest_chart,
                   color_map, add_se, add_lsd, add_letters):
