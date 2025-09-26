@@ -51,24 +51,40 @@ if data is not None:
                 unsafe_allow_html=True
             )
 
-            # Per-chart settings
-            chart_mode = st.radio(
-                "Chart type",
-                ["Boxplot", "Bar chart"],
-                key=safe_key("chartmode", assess)
-            )
-            view_mode_chart = st.radio(
-                "Grouping",
-                ["By Date", "By Treatment"],
-                key=safe_key("viewmode", assess)
-            )
-            a_is_lowest_chart = st.radio(
-                "Lettering convention",
-                ["Lowest = A", "Highest = A"],
-                key=safe_key("letters", assess)
-            ) == "Lowest = A"
+            # ----------------------
+            # Chart Settings
+            # ----------------------
+            with st.expander("Chart Settings", expanded=True):
+                chart_mode = st.radio(
+                    "Chart type",
+                    ["Boxplot", "Bar chart"],
+                    key=safe_key("chartmode", assess)
+                )
+                view_mode_chart = st.radio(
+                    "Grouping",
+                    ["By Date", "By Treatment"],
+                    key=safe_key("viewmode", assess)
+                )
+                a_is_lowest_chart = st.radio(
+                    "Lettering convention",
+                    ["Lowest = A", "Highest = A"],
+                    key=safe_key("letters", assess)
+                ) == "Lowest = A"
 
+                # Bar chart specific toggles
+                add_se = add_lsd = add_letters = False
+                if chart_mode == "Bar chart":
+                    add_se = st.checkbox("Add SE error bars", value=True, key=safe_key("se", assess))
+                    add_lsd = st.checkbox("Add LSD error bars", value=False, key=safe_key("lsd", assess))
+                    add_letters = st.checkbox("Add statistical letters", value=True, key=safe_key("letters_check", assess))
+
+                # Axis range controls
+                y_min = st.number_input("Y-axis minimum", value=0, step=1, key=safe_key("ymin", assess))
+                y_max = st.number_input("Y-axis maximum", value=100, step=1, key=safe_key("ymax", assess))
+
+            # ----------------------
             # Treatment filter
+            # ----------------------
             visible_treatments = st.multiselect(
                 "Show treatments",
                 options=treatments,
@@ -76,7 +92,7 @@ if data is not None:
                 key=safe_key("visible_treatments", assess),
             )
 
-            # Subset data
+            # Prepare data
             df_sub = data[data["Assessment"] == assess].copy()
             df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
             df_sub = df_sub.dropna(subset=["Value"])
@@ -86,28 +102,39 @@ if data is not None:
                 ordered=True,
             )
 
+            # ----------------------
             # Chart
-            if chart_mode == "Boxplot":
-                fig = make_boxplot(
-                    df_sub, treatments, date_labels_ordered,
-                    view_mode_chart, visible_treatments, color_map
-                )
-            else:
-                fig = make_barchart(
-                    df_sub, treatments, date_labels_ordered,
-                    view_mode_chart, visible_treatments,
-                    alpha_choice, a_is_lowest_chart, color_map
-                )
+            # ----------------------
+            with st.expander("Chart", expanded=True):
+                if chart_mode == "Boxplot":
+                    fig = make_boxplot(
+                        df_sub, treatments, date_labels_ordered,
+                        view_mode_chart, visible_treatments, color_map
+                    )
+                else:
+                    fig = make_barchart(
+                        df_sub, treatments, date_labels_ordered,
+                        view_mode_chart, visible_treatments,
+                        alpha_choice, a_is_lowest_chart,
+                        color_map, add_se, add_lsd, add_letters
+                    )
 
-            st.plotly_chart(fig, use_container_width=True)
+                # Apply axis limits
+                fig.update_yaxes(range=[y_min, y_max])
 
-            # Stats table
-            wide_table = build_stats_table(
-                df_sub, treatments, date_labels_ordered,
-                alpha_choice, a_is_lowest_chart
-            )
-            st.dataframe(wide_table, use_container_width=True, hide_index=True)
-            all_tables[assess] = wide_table
+                st.plotly_chart(fig, use_container_width=True)
+
+            # ----------------------
+            # Statistics Table
+            # ----------------------
+            with st.expander("Statistics Table", expanded=False):
+                df_stats = df_sub[df_sub["Treatment"].isin(visible_treatments)].copy()
+                wide_table = build_stats_table(
+                    df_stats, visible_treatments, date_labels_ordered,
+                    alpha_choice, a_is_lowest_chart
+                )
+                st.dataframe(wide_table, use_container_width=True, hide_index=True)
+                all_tables[assess] = wide_table
 
     # ----------------------
     # Exports
