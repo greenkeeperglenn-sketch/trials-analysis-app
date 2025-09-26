@@ -7,6 +7,7 @@ import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from helpers import generate_cld_overlap
 
+
 def make_boxplot(df_sub, treatments, date_labels_ordered, view_mode_chart, visible_treatments, color_map):
     """Generate a boxplot grouped by Date or Treatment."""
     df_plot = df_sub[df_sub["Treatment"].isin(visible_treatments)].copy()
@@ -85,9 +86,6 @@ def make_barchart(df_sub, treatments, date_labels_ordered,
     # Build the chart
     fig = go.Figure()
 
-    y_max = df_plot["Value"].max()
-    offset = 0.05 * y_max if pd.notna(y_max) else 1
-
     if view_mode_chart == "By Date":
         for t in visible_treatments:
             df_t = merged[merged["Treatment"] == t]
@@ -100,27 +98,26 @@ def make_barchart(df_sub, treatments, date_labels_ordered,
             elif add_lsd and "LSD" in df_t.columns:
                 error_y = dict(type="constant", value=df_t["LSD"].iloc[0], visible=True)
 
+            # Offset for letters (5% of value or fixed 0.5 if bar is very small)
+            text_vals = []
+            for _, row in df_t.iterrows():
+                letter = letters_dict.get(row["DateLabel"], {}).get(t, "") if add_letters else ""
+                if letter:
+                    offset_val = max(row["Value"] * 0.05, 0.5)
+                    text_vals.append(letter)
+                else:
+                    text_vals.append("")
+            
             fig.add_trace(go.Bar(
                 x=df_t["DateLabel"],
                 y=df_t["Value"],
                 name=t,
                 marker_color=color_map.get(t, None),
-                error_y=error_y
+                error_y=error_y,
+                text=text_vals,
+                textposition="outside",
+                textfont=dict(color="black", size=12)
             ))
-
-            if add_letters:
-                for _, row in df_t.iterrows():
-                    letter = letters_dict.get(row["DateLabel"], {}).get(t, "")
-                    if letter:
-                        fig.add_annotation(
-                            x=row["DateLabel"],
-                            y=row["Value"] + offset,
-                            text=letter,
-                            showarrow=False,
-                            yanchor="bottom",
-                            xanchor="center",
-                            font=dict(color="black", size=12)
-                        )
 
     else:  # By Treatment
         for d in date_labels_ordered:
@@ -134,27 +131,24 @@ def make_barchart(df_sub, treatments, date_labels_ordered,
             elif add_lsd and "LSD" in df_d.columns:
                 error_y = dict(type="constant", value=df_d["LSD"].iloc[0], visible=True)
 
+            text_vals = []
+            for _, row in df_d.iterrows():
+                letter = letters_dict.get(d, {}).get(row["Treatment"], "") if add_letters else ""
+                if letter:
+                    offset_val = max(row["Value"] * 0.05, 0.5)
+                    text_vals.append(letter)
+                else:
+                    text_vals.append("")
+
             fig.add_trace(go.Bar(
                 x=df_d["Treatment"],
                 y=df_d["Value"],
                 name=d,
-                marker_color=None,
-                error_y=error_y
+                error_y=error_y,
+                text=text_vals,
+                textposition="outside",
+                textfont=dict(color="black", size=12)
             ))
-
-            if add_letters:
-                for _, row in df_d.iterrows():
-                    letter = letters_dict.get(d, {}).get(row["Treatment"], "")
-                    if letter:
-                        fig.add_annotation(
-                            x=row["Treatment"],
-                            y=row["Value"] + offset,
-                            text=letter,
-                            showarrow=False,
-                            yanchor="bottom",
-                            xanchor="center",
-                            font=dict(color="black", size=12)
-                        )
 
     fig.update_layout(barmode="group")
     return fig
