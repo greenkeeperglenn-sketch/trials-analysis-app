@@ -54,7 +54,10 @@ def build_stats_table(df_sub, treatments, date_labels_ordered, alpha_choice, a_i
                     a_is_lowest=a_is_lowest_chart
                 )
                 p_disp = f"{p_val:.3f}" if pd.notna(p_val) else ""
-                lsd_disp = f"{stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/np.mean(list(rep_counts.values()))):.4f}" if pd.notna(mse) else "-"
+                lsd_disp = (
+                    f"{stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/np.mean(list(rep_counts.values()))):.4f}"
+                    if pd.notna(mse) else "-"
+                )
 
             df_disp = f"{df_error:.0f}" if pd.notna(df_error) else ""
             cv_disp = f"{cv:.1f}" if pd.notna(cv) else ""
@@ -78,6 +81,13 @@ def build_stats_table(df_sub, treatments, date_labels_ordered, alpha_choice, a_i
         summary_rows.append(row)
 
     wide_table = pd.concat([wide_table, pd.DataFrame(summary_rows)], ignore_index=True)
+
+    # ✅ Format main treatment means to 2 decimals
+    for date_label in date_labels_ordered:
+        mask = ~wide_table["Treatment"].isin(["P", "LSD", "d.f.", "%CV"])
+        wide_table.loc[mask, date_label] = wide_table.loc[mask, date_label].map(
+            lambda x: f"{x:.2f}" if pd.notna(x) else ""
+        )
 
     # ✅ Styling (gray treatment col + summary rows)
     def style_table(df):
