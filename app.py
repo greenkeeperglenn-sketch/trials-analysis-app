@@ -119,10 +119,11 @@ if data is not None:
                         color_map, add_se, add_lsd, add_letters
                     )
 
-                # Apply axis limits
+                # Apply axis limits & height
                 fig.update_yaxes(range=[y_min, y_max])
+                fig.update_layout(height=500)
 
-                st.plotly_chart(fig, use_container_width=True, height=500)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True})
 
             # ----------------------
             # Statistics Table
@@ -137,7 +138,7 @@ if data is not None:
                     wide_table,
                     use_container_width=True,
                     hide_index=True,
-                    height=500,  # ✅ fixed height stops page scroll bug
+                    height=500,  # table still scrolls inside container
                     column_config={
                         "Treatment": st.column_config.Column("Treatment", pinned=True)
                     }
