@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import re
-from io import BytesIO
 import numpy as np
 from scipy import stats
 import statsmodels.api as sm
@@ -111,7 +110,6 @@ uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
     all_data = []
-    assessment_cols = set()
 
     for sheet in xls.sheet_names:
         try:
@@ -140,7 +138,6 @@ if uploaded_file:
 
             treat_idx = df.columns.get_loc(treat_col)
             assess_list = df.columns[treat_idx+1:].tolist()
-            assessment_cols.update(assess_list)
 
             id_vars = [block_col, treat_col]
             if plot_col:
@@ -310,41 +307,41 @@ if uploaded_file:
 
                 fig = go.Figure()
 
-                # Determine x-axis mode
+                # Decide grouping
                 if view_mode_chart == "By Date":
                     x_axis = "DateLabel"
+                    group_axis = "Treatment"
                     category_orders = {"DateLabel": date_labels_ordered, "Treatment": treatments}
                 else:
                     x_axis = "Treatment"
+                    group_axis = "DateLabel"
                     category_orders = {"Treatment": treatments, "DateLabel": date_labels_ordered}
 
-                for t in treatments:
-                    if view_mode_chart == "By Date":
-                        df_t = merged[merged["Treatment"] == t]
-                    else:
-                        df_t = merged[merged["Treatment"] == t]
-
-                    if df_t.empty:
+                for group in merged[group_axis].dropna().unique():
+                    df_g = merged[merged[group_axis] == group]
+                    if df_g.empty:
                         continue
 
                     error_y = None
-                    if add_se and "se" in df_t.columns:
-                        error_y = dict(type="data", array=df_t["se"], visible=True)
-                    elif add_lsd and "LSD" in df_t.columns:
-                        error_y = dict(type="constant", value=df_t["LSD"].iloc[0], visible=True)
+                    if add_se and "se" in df_g.columns:
+                        error_y = dict(type="data", array=df_g["se"], visible=True)
+                    elif add_lsd and "LSD" in df_g.columns:
+                        error_y = dict(type="constant", value=df_g["LSD"].iloc[0], visible=True)
 
                     fig.add_trace(go.Bar(
-                        x=df_t[x_axis],
-                        y=df_t["Value_median"],
-                        name=t if view_mode_chart == "By Date" else None,
-                        marker_color=color_map[t] if view_mode_chart == "By Date" else None,
+                        x=df_g[x_axis],
+                        y=df_g["Value_median"],
+                        name=str(group),
                         error_y=error_y,
-                        text=[letters_dict.get(d, {}).get(t, "") if add_letters else "" for d in df_t[x_axis]],
+                        text=[letters_dict.get(d, {}).get(group, "") if add_letters else "" for d in df_g[x_axis]],
                         textposition="outside",
                         textfont=dict(color="black", size=12)
                     ))
 
-                fig.update_layout(barmode="group")
+                fig.update_layout(
+                    barmode="group",
+                    xaxis={'categoryorder': 'array', 'categoryarray': list(category_orders[x_axis])}
+                )
 
             # Apply axis limits
             fig.update_yaxes(range=[axis_min, axis_max])
