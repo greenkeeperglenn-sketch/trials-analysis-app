@@ -183,9 +183,6 @@ if uploaded_file:
         date_labels_all = data["DateLabel"].dropna().unique().tolist()
         date_labels_ordered = chronological_labels(date_labels_all)
 
-        all_tables = {}
-        word_doc = Document()  # Word doc for export
-
         for assess in selected_assessments:
             st.subheader(f"Assessment: {assess}")
             df_sub = data[data["Assessment"] == assess].copy()
@@ -206,52 +203,51 @@ if uploaded_file:
                     continue
                 df_sub = df_sub[df_sub["Block"].isin(sel_blocks)]
 
-            # === Per-chart controls ===
-            view_mode_chart = st.radio(
-                f"Boxplot grouping for {assess}",
-                ["By Date", "By Treatment"],
-                key=safe_key("viewmode", assess)
-            )
+            # === Per-chart controls inside an expander ===
+            with st.expander("Chart Settings", expanded=False):
+                view_mode_chart = st.radio(
+                    f"Grouping for {assess}",
+                    ["By Date", "By Treatment"],
+                    key=safe_key("viewmode", assess)
+                )
 
-            a_is_lowest_chart = (
-                st.radio(
-                    f"Lettering convention for {assess}",
-                    ["Lowest = A", "Highest = A"],
-                    index=0,
-                    key=safe_key("letters_mode", assess)
-                ) == "Lowest = A"
-            )
+                a_is_lowest_chart = (
+                    st.radio(
+                        f"Lettering convention for {assess}",
+                        ["Lowest = A", "Highest = A"],
+                        index=0,
+                        key=safe_key("letters_mode", assess)
+                    ) == "Lowest = A"
+                )
 
-            axis_min = st.number_input(
-                f"Y-axis minimum ({assess})",
-                value=int(df_sub["Value"].min()) if not df_sub["Value"].empty else 0,
-                step=1,
-                key=safe_key("ymin", assess)
-            )
-            axis_max = st.number_input(
-                f"Y-axis maximum ({assess})",
-                value=int(df_sub["Value"].max()) if not df_sub["Value"].empty else 100,
-                step=1,
-                key=safe_key("ymax", assess)
-            )
+                axis_min = st.number_input(
+                    f"Y-axis minimum ({assess})",
+                    value=int(df_sub["Value"].min()) if not df_sub["Value"].empty else 0,
+                    step=1,
+                    key=safe_key("ymin", assess)
+                )
+                axis_max = st.number_input(
+                    f"Y-axis maximum ({assess})",
+                    value=int(df_sub["Value"].max()) if not df_sub["Value"].empty else 100,
+                    step=1,
+                    key=safe_key("ymax", assess)
+                )
 
-            # Chart options per assessment
-            chart_mode = st.radio(
-                "Chart type",
-                ["Boxplot", "Bar chart"],
-                key=safe_key("chartmode", assess)
-            )
+                chart_mode = st.radio(
+                    "Chart type",
+                    ["Boxplot", "Bar chart"],
+                    key=safe_key("chartmode", assess)
+                )
 
-            add_se = False
-            add_lsd = False
-            add_letters = False
+                add_se = add_lsd = add_letters = False
+                if chart_mode == "Bar chart":
+                    add_se = st.checkbox("Add SE error bars", key=safe_key("se", assess))
+                    add_lsd = st.checkbox("Add LSD error bars", key=safe_key("lsd", assess))
+                    add_letters = st.checkbox("Add statistical letters", key=safe_key("letters", assess))
 
-            if chart_mode == "Bar chart":
-                add_se = st.checkbox("Add SE error bars", key=safe_key("se", assess))
-                add_lsd = st.checkbox("Add LSD error bars", key=safe_key("lsd", assess))
-                add_letters = st.checkbox("Add statistical letters", key=safe_key("letters", assess))
-
-            # Boxplot
+            # ======================
+            # Chart rendering
+            # ======================
             if chart_mode == "Boxplot":
                 if view_mode_chart == "By Date":
                     fig = px.box(
@@ -268,9 +264,8 @@ if uploaded_file:
                     )
                 fig.update_traces(boxpoints=False)
 
-            # Bar chart
-            else:
-                # Compute medians, SE, LSD, and letters
+            else:  # Bar chart
+                # Aggregates
                 medians = df_sub.groupby(["DateLabel", "Treatment"])["Value"].median().reset_index()
                 means = df_sub.groupby(["DateLabel", "Treatment"])["Value"].mean().reset_index()
                 rep_counts = df_sub.groupby(["DateLabel", "Treatment"]).size().reset_index(name="n")
@@ -315,8 +310,20 @@ if uploaded_file:
 
                 fig = go.Figure()
 
-                for i, t in enumerate(treatments):
-                    df_t = merged[merged["Treatment"] == t]
+                # Determine x-axis mode
+                if view_mode_chart == "By Date":
+                    x_axis = "DateLabel"
+                    category_orders = {"DateLabel": date_labels_ordered, "Treatment": treatments}
+                else:
+                    x_axis = "Treatment"
+                    category_orders = {"Treatment": treatments, "DateLabel": date_labels_ordered}
+
+                for t in treatments:
+                    if view_mode_chart == "By Date":
+                        df_t = merged[merged["Treatment"] == t]
+                    else:
+                        df_t = merged[merged["Treatment"] == t]
+
                     if df_t.empty:
                         continue
 
@@ -327,12 +334,12 @@ if uploaded_file:
                         error_y = dict(type="constant", value=df_t["LSD"].iloc[0], visible=True)
 
                     fig.add_trace(go.Bar(
-                        x=df_t["DateLabel"],
+                        x=df_t[x_axis],
                         y=df_t["Value_median"],
-                        name=t,
-                        marker_color=color_map[t],
+                        name=t if view_mode_chart == "By Date" else None,
+                        marker_color=color_map[t] if view_mode_chart == "By Date" else None,
                         error_y=error_y,
-                        text=[letters_dict.get(d, {}).get(t, "") if add_letters else "" for d in df_t["DateLabel"]],
+                        text=[letters_dict.get(d, {}).get(t, "") if add_letters else "" for d in df_t[x_axis]],
                         textposition="outside",
                         textfont=dict(color="black", size=12)
                     ))
@@ -341,5 +348,4 @@ if uploaded_file:
 
             # Apply axis limits
             fig.update_yaxes(range=[axis_min, axis_max])
-
             st.plotly_chart(fig, use_container_width=True)
