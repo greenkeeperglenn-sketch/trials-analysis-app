@@ -30,17 +30,6 @@ alpha_options = {
 alpha_label = st.sidebar.radio("Significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
 
-view_mode = st.sidebar.radio("Boxplot grouping:", ["By Date", "By Treatment"])
-
-global_a_is_lowest = (
-    st.sidebar.radio(
-        "Lettering convention:",
-        ["Lowest = A", "Highest = A"],
-        index=0,
-        key="letters_global"
-    ) == "Lowest = A"
-)
-
 # ======================
 # Helpers
 # ======================
@@ -212,6 +201,35 @@ if uploaded_file:
                     continue
                 df_sub = df_sub[df_sub["Block"].isin(sel_blocks)]
 
+            # === Per-chart controls ===
+            view_mode_chart = st.radio(
+                f"Boxplot grouping for {assess}",
+                ["By Date", "By Treatment"],
+                key=f"viewmode_{assess}"
+            )
+
+            a_is_lowest_chart = (
+                st.radio(
+                    f"Lettering convention for {assess}",
+                    ["Lowest = A", "Highest = A"],
+                    index=0,
+                    key=f"letters_{assess}"
+                ) == "Lowest = A"
+            )
+
+            axis_min = st.number_input(
+                f"Y-axis minimum ({assess})",
+                value=int(df_sub["Value"].min()) if not df_sub["Value"].empty else 0,
+                step=1,
+                key=f"ymin_{assess}"
+            )
+            axis_max = st.number_input(
+                f"Y-axis maximum ({assess})",
+                value=int(df_sub["Value"].max()) if not df_sub["Value"].empty else 100,
+                step=1,
+                key=f"ymax_{assess}"
+            )
+
             # Chart options per assessment
             chart_mode = st.radio(
                 "Chart type",
@@ -230,7 +248,7 @@ if uploaded_file:
 
             # Boxplot
             if chart_mode == "Boxplot":
-                if view_mode == "By Date":
+                if view_mode_chart == "By Date":
                     fig = px.box(df_sub, x="DateLabel", y="Value", color="Treatment",
                                  color_discrete_map=color_map,
                                  category_orders={"DateLabel": date_labels_ordered, "Treatment": treatments})
@@ -268,7 +286,7 @@ if uploaded_file:
 
                                 letters, _ = generate_cld_overlap(
                                     means_date, mse, df_error, alpha_choice, rep_counts_date,
-                                    a_is_lowest=global_a_is_lowest
+                                    a_is_lowest=a_is_lowest_chart
                                 )
                                 letters_dict[date_label] = letters
 
@@ -285,9 +303,6 @@ if uploaded_file:
                     merged = merged.merge(df_se[["DateLabel", "Treatment", "se"]], on=["DateLabel", "Treatment"], how="left")
 
                 fig = go.Figure()
-
-                y_max = df_sub["Value"].max()
-                offset = 0.05 * y_max if pd.notna(y_max) else 1
 
                 for i, t in enumerate(treatments):
                     df_t = merged[merged["Treatment"] == t]
@@ -308,14 +323,20 @@ if uploaded_file:
                         error_y=error_y
                     ))
 
-                    # Place letters above bars
+                    # Place letters directly above the correct bar
                     if add_letters:
                         for j, row in df_t.iterrows():
                             letter = letters_dict.get(row["DateLabel"], {}).get(t, "")
                             if letter:
+                                err = 0
+                                if add_se and "se" in row:
+                                    err = row["se"]
+                                elif add_lsd and "LSD" in df_t.columns:
+                                    err = df_t["LSD"].iloc[0]
+                                y_pos = row["Value_median"] + err + 2
                                 fig.add_annotation(
                                     x=row["DateLabel"],
-                                    y=row["Value_median"] + offset,
+                                    y=y_pos,
                                     text=letter,
                                     showarrow=False,
                                     yanchor="bottom",
@@ -325,6 +346,7 @@ if uploaded_file:
 
                 fig.update_layout(barmode="group")
 
-            st.plotly_chart(fig, use_container_width=True)
+            # Apply axis limits
+            fig.update_yaxes(range=[axis_min, axis_max])
 
-            # === Stats table & Word export remain unchanged ===
+            st.plotly_chart(fig, use_container_width=True)
