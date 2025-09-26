@@ -9,15 +9,11 @@ import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from itertools import combinations
 
-# NEW: for Word export
-from docx import Document
-from docx.shared import Inches
-
 st.set_page_config(layout="wide")
 st.title("Assessment Data Explorer")
 
 # ======================
-# Sidebar controls
+# Sidebar Global Settings
 # ======================
 st.sidebar.header("Global Settings")
 
@@ -29,9 +25,6 @@ alpha_options = {
 alpha_label = st.sidebar.radio("Significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
 
-# ======================
-# Helpers
-# ======================
 def parse_sheet_label_to_date(label: str):
     for dayfirst in (True, False):
         dt = pd.to_datetime(label, errors="coerce", dayfirst=dayfirst)
@@ -99,14 +92,13 @@ def generate_cld_overlap(means, mse, df_error, alpha, rep_counts, a_is_lowest=Tr
     return letters, nsd
 
 def safe_key(base, assess):
-    """Generate safe unique keys for widgets"""
-    safe = re.sub(r'\W+', '_', str(assess))  # replace non-word chars with _
+    safe = re.sub(r'\W+', '_', str(assess))
     return f"{base}_{safe}"
 
 # ======================
 # Upload & Parse
 # ======================
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+uploaded_file = st.sidebar.file_uploader("Upload Excel File", type=["xlsx"])
 if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
     all_data = []
@@ -161,10 +153,10 @@ if uploaded_file:
     else:
         data = pd.concat(all_data, ignore_index=True)
 
-        # Treatment naming
+        # Treatments in sidebar
         treatments = sorted(data["Treatment"].dropna().unique(), key=lambda x: str(x))
-        st.subheader("Treatment Names")
-        names_input = st.text_area("Paste treatment names (one per line)", height=200)
+        st.sidebar.subheader("Treatment Names")
+        names_input = st.sidebar.text_area("Paste treatment names (one per line)", height=200)
         if names_input.strip():
             pasted = [n.strip() for n in names_input.split("\n") if n.strip()]
             if len(pasted) == len(treatments):
@@ -172,36 +164,35 @@ if uploaded_file:
                 data["Treatment"] = data["Treatment"].map(mapping).fillna(data["Treatment"])
                 treatments = pasted
             else:
-                st.warning("Number of names pasted does not match detected treatments!")
+                st.sidebar.warning("Number of names pasted does not match detected treatments!")
 
-        selected_assessments = st.multiselect("Select assessments:", sorted(set(data["Assessment"].unique())))
+        # Blocks in sidebar
+        blocks = sorted(data["Block"].dropna().unique()) if "Block" in data.columns else []
+        sel_blocks = st.sidebar.multiselect("Include Blocks", blocks, default=blocks, key="global_blocks")
 
-        color_map = {t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)] for i, t in enumerate(treatments)}
+        # Assessments in sidebar
+        assessments_all = sorted(set(data["Assessment"].unique()))
+        selected_assessments = st.sidebar.multiselect("Select assessments", assessments_all)
+
+        # Date ordering
         date_labels_all = data["DateLabel"].dropna().unique().tolist()
         date_labels_ordered = chronological_labels(date_labels_all)
 
+        # Apply global block filter
+        if sel_blocks:
+            data = data[data["Block"].isin(sel_blocks)]
+
+        color_map = {t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)] for i, t in enumerate(treatments)}
+
+        # ======================
+        # Loop through assessments
+        # ======================
         for assess in selected_assessments:
             st.subheader(f"Assessment: {assess}")
             df_sub = data[data["Assessment"] == assess].copy()
             df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
             df_sub = df_sub.dropna(subset=["Value"])
-
-            # Force DateLabel into categorical with chronological order
             df_sub["DateLabel"] = pd.Categorical(df_sub["DateLabel"], categories=date_labels_ordered, ordered=True)
-
-            # Block selector
-            if "Block" in df_sub.columns:
-                blocks = sorted(df_sub["Block"].dropna().unique())
-                sel_blocks = st.multiselect(
-                    f"Include Blocks for {assess}",
-                    blocks,
-                    default=blocks,
-                    key=safe_key("blocks", assess)
-                )
-                if not sel_blocks:
-                    st.warning("No blocks selected. Please select at least one block to see results.")
-                    continue
-                df_sub = df_sub[df_sub["Block"].isin(sel_blocks)]
 
             # === Per-chart controls inside an expander ===
             with st.expander("Chart Settings", expanded=False):
@@ -253,19 +244,16 @@ if uploaded_file:
                     fig = px.box(
                         df_sub, x="DateLabel", y="Value", color="Treatment",
                         color_discrete_map=color_map,
-                        category_orders={"DateLabel": date_labels_ordered,
-                                         "Treatment": treatments}
+                        category_orders={"DateLabel": date_labels_ordered, "Treatment": treatments}
                     )
                 else:
                     fig = px.box(
                         df_sub, x="Treatment", y="Value", color="DateLabel",
-                        category_orders={"Treatment": treatments,
-                                         "DateLabel": date_labels_ordered}
+                        category_orders={"Treatment": treatments, "DateLabel": date_labels_ordered}
                     )
                 fig.update_traces(boxpoints=False)
 
             else:  # Bar chart
-                # Aggregates
                 medians = df_sub.groupby(["DateLabel", "Treatment"])["Value"].median().reset_index()
                 means = df_sub.groupby(["DateLabel", "Treatment"])["Value"].mean().reset_index()
                 rep_counts = df_sub.groupby(["DateLabel", "Treatment"]).size().reset_index(name="n")
@@ -333,7 +321,7 @@ if uploaded_file:
                     if add_letters:
                         if view_mode_chart == "By Date":
                             texts = [letters_dict.get(d, {}).get(group, "") for d in df_g["DateLabel"]]
-                        else:  # By Treatment
+                        else:
                             texts = [letters_dict.get(date, {}).get(df_g["Treatment"].iloc[0], "") for date in df_g["DateLabel"]]
                     else:
                         texts = ""
@@ -353,6 +341,33 @@ if uploaded_file:
                     xaxis={'categoryorder': 'array', 'categoryarray': list(category_orders[x_axis])}
                 )
 
-            # Apply axis limits
             fig.update_yaxes(range=[axis_min, axis_max])
             st.plotly_chart(fig, use_container_width=True)
+
+            # ======================
+            # Stats Table
+            # ======================
+            stats_tables = []
+            for date_label in date_labels_ordered:
+                df_date = df_sub[df_sub["DateLabel"] == date_label]
+                if df_date["Treatment"].nunique() > 1 and len(df_date) > 1:
+                    try:
+                        if "Block" in df_date.columns:
+                            model = ols("Value ~ C(Treatment) + C(Block)", data=df_date).fit()
+                        else:
+                            model = ols("Value ~ C(Treatment)", data=df_date).fit()
+                        means = df_date.groupby("Treatment")["Value"].mean()
+                        letters = letters_dict.get(date_label, {}) if add_letters else {}
+                        table = pd.DataFrame({
+                            "Treatment": means.index,
+                            "Mean": means.values,
+                            "Letters": [letters.get(t, "") for t in means.index]
+                        })
+                        table["Date"] = date_label
+                        stats_tables.append(table)
+                    except Exception:
+                        continue
+            if stats_tables:
+                final_table = pd.concat(stats_tables)
+                st.write("### Statistics Table")
+                st.dataframe(final_table)
