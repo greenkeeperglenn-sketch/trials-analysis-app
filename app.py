@@ -122,7 +122,7 @@ if data is not None:
                 # Apply axis limits
                 fig.update_yaxes(range=[y_min, y_max])
 
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, height=500)
 
             # ----------------------
             # Statistics Table
@@ -133,7 +133,15 @@ if data is not None:
                     df_stats, visible_treatments, date_labels_ordered,
                     alpha_choice, a_is_lowest_chart
                 )
-                st.dataframe(wide_table, use_container_width=True, hide_index=True)
+                st.dataframe(
+                    wide_table,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=500,  # ✅ fixed height stops page scroll bug
+                    column_config={
+                        "Treatment": st.column_config.Column("Treatment", pinned=True)
+                    }
+                )
                 all_tables[assess] = wide_table
 
     # ----------------------
