@@ -130,20 +130,21 @@ if data is not None:
             # ----------------------
             with st.expander("Statistics Table", expanded=False):
                 df_stats = df_sub[df_sub["Treatment"].isin(visible_treatments)].copy()
-                wide_table = build_stats_table(
+                wide_table, styled_table = build_stats_table(
                     df_stats, visible_treatments, date_labels_ordered,
                     alpha_choice, a_is_lowest_chart
                 )
+
                 st.dataframe(
-                    wide_table,
+                    styled_table,
                     use_container_width=True,
                     hide_index=True,
-                    height=500,  # table still scrolls inside container
+                    height=500,
                     column_config={
                         "Treatment": st.column_config.Column("Treatment", pinned=True)
                     }
                 )
-                all_tables[assess] = wide_table
+                all_tables[assess] = wide_table  # raw table kept for export
 
     # ----------------------
     # Exports
