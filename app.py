@@ -307,7 +307,6 @@ if uploaded_file:
 
                 fig = go.Figure()
 
-                # Decide grouping
                 if view_mode_chart == "By Date":
                     x_axis = "DateLabel"
                     group_axis = "Treatment"
@@ -328,12 +327,20 @@ if uploaded_file:
                     elif add_lsd and "LSD" in df_g.columns:
                         error_y = dict(type="constant", value=df_g["LSD"].iloc[0], visible=True)
 
+                    if add_letters:
+                        if view_mode_chart == "By Date":
+                            texts = [letters_dict.get(d, {}).get(group, "") for d in df_g["DateLabel"]]
+                        else:  # By Treatment
+                            texts = [letters_dict.get(date, {}).get(df_g["Treatment"].iloc[0], "") for date in df_g["DateLabel"]]
+                    else:
+                        texts = ""
+
                     fig.add_trace(go.Bar(
                         x=df_g[x_axis],
                         y=df_g["Value_median"],
                         name=str(group),
                         error_y=error_y,
-                        text=[letters_dict.get(d, {}).get(group, "") if add_letters else "" for d in df_g[x_axis]],
+                        text=texts,
                         textposition="outside",
                         textfont=dict(color="black", size=12)
                     ))
