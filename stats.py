@@ -16,7 +16,7 @@ def build_stats_table(df_sub, treatments, date_labels_ordered, alpha_choice, a_i
         if df_date.empty:
             wide_table[f"{date_label}"] = np.nan
             wide_table[f"{date_label} S"] = ""
-            summaries[date_label] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
+            summaries[date_label] = {"P": "", "LSD": "", "d.f.": "", "%CV": ""}
             continue
 
         df_date["Value"] = pd.to_numeric(df_date["Value"], errors="coerce")
@@ -52,14 +52,25 @@ def build_stats_table(df_sub, treatments, date_labels_ordered, alpha_choice, a_i
                 if pd.notna(mse) else np.nan
             )
 
+            # ✅ Conditional display like reference package
+            if pd.notna(p_val) and p_val > alpha_choice:
+                p_disp = "ns"
+                lsd_disp = "-"
+            else:
+                p_disp = f"{p_val:.3f}" if pd.notna(p_val) else ""
+                lsd_disp = f"{lsd_val:.4f}" if pd.notna(lsd_val) else "-"
+
+            df_disp = f"{df_error:.0f}" if pd.notna(df_error) else ""
+            cv_disp = f"{cv:.1f}" if pd.notna(cv) else ""
+
             wide_table[f"{date_label}"] = wide_table["Treatment"].map(means)
             wide_table[f"{date_label} S"] = wide_table["Treatment"].map(letters).fillna("")
-            summaries[date_label] = {"P": p_val, "LSD": lsd_val, "d.f.": df_error, "%CV": cv}
+            summaries[date_label] = {"P": p_disp, "LSD": lsd_disp, "d.f.": df_disp, "%CV": cv_disp}
 
         else:
             wide_table[f"{date_label}"] = np.nan
             wide_table[f"{date_label} S"] = ""
-            summaries[date_label] = {"P": np.nan, "LSD": np.nan, "d.f.": np.nan, "%CV": np.nan}
+            summaries[date_label] = {"P": "", "LSD": "", "d.f.": "", "%CV": ""}
 
     # Add summary rows
     summary_rows = []
@@ -71,6 +82,20 @@ def build_stats_table(df_sub, treatments, date_labels_ordered, alpha_choice, a_i
         summary_rows.append(row)
 
     wide_table = pd.concat([wide_table, pd.DataFrame(summary_rows)], ignore_index=True)
-    wide_table = wide_table.round(2)
 
-    return wide_table
+    # ✅ Styling (gray treatment col + summary rows)
+    def style_table(df):
+        styled = df.style.applymap(
+            lambda _: "background-color: lightgray", subset=["Treatment"]
+        )
+        styled = styled.apply(
+            lambda row: [
+                "background-color: lightgray"
+                if row["Treatment"] in ["P", "LSD", "d.f.", "%CV"] else ""
+                for _ in row
+            ],
+            axis=1,
+        )
+        return styled
+
+    return wide_table, style_table(wide_table)
