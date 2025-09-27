@@ -7,7 +7,7 @@ import charts
 import stats
 import data_loader
 import helpers
-import exports
+import exports  # <-- our new exports.py
 
 st.set_page_config(layout="wide")
 st.title("Assessment Data Explorer")
@@ -40,7 +40,8 @@ if data is not None:
         for i, t in enumerate(treatments)
     }
 
-    all_tables = {}
+    all_tables = {}  # raw stats tables
+    all_figs = {}    # charts for export
 
     # ----------------------
     # Loop through assessments
@@ -75,13 +76,18 @@ if data is not None:
                 # Bar chart specific toggles
                 add_se = add_lsd = add_letters = False
                 if chart_mode == "Bar chart":
-                    add_se = st.checkbox("Add SE error bars", value=True, key=helpers.safe_key("se", assess))
-                    add_lsd = st.checkbox("Add LSD error bars", value=False, key=helpers.safe_key("lsd", assess))
-                    add_letters = st.checkbox("Add statistical letters", value=True, key=helpers.safe_key("letters_check", assess))
+                    add_se = st.checkbox("Add SE error bars", value=True,
+                                         key=helpers.safe_key("se", assess))
+                    add_lsd = st.checkbox("Add LSD error bars", value=False,
+                                          key=helpers.safe_key("lsd", assess))
+                    add_letters = st.checkbox("Add statistical letters", value=True,
+                                              key=helpers.safe_key("letters_check", assess))
 
                 # Axis range controls
-                y_min = st.number_input("Y-axis minimum", value=0, step=1, key=helpers.safe_key("ymin", assess))
-                y_max = st.number_input("Y-axis maximum", value=100, step=1, key=helpers.safe_key("ymax", assess))
+                y_min = st.number_input("Y-axis minimum", value=0, step=1,
+                                        key=helpers.safe_key("ymin", assess))
+                y_max = st.number_input("Y-axis maximum", value=100, step=1,
+                                        key=helpers.safe_key("ymax", assess))
 
             # ----------------------
             # Treatment filter
@@ -124,7 +130,11 @@ if data is not None:
                 fig.update_yaxes(range=[y_min, y_max])
                 fig.update_layout(height=500)
 
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True})
+                st.plotly_chart(fig, use_container_width=True,
+                                config={"displayModeBar": True})
+
+                # Save fig for export
+                all_figs[assess] = fig
 
             # ----------------------
             # Statistics Table
@@ -145,9 +155,15 @@ if data is not None:
                         "Treatment": st.column_config.Column("Treatment", pinned=True)
                     }
                 )
-                all_tables[assess] = wide_table  # raw table kept for export
+
+                # Save table for export
+                all_tables[assess] = wide_table
 
     # ----------------------
-    # Exports
+    # Global Exports (sidebar)
     # ----------------------
-    exports.export_tables_to_excel(all_tables)
+    exports.export_buttons(
+        all_tables,
+        all_figs,
+        logo_path="541ee314-eafe-49ca-be67-355683e0420d.png"  # path to STRI logo
+    )
