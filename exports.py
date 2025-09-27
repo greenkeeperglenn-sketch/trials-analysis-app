@@ -8,15 +8,7 @@ from reportlab.platypus import (
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
 from PIL import Image as PILImage, ImageDraw
-
-# -------------------------------------------------------------------
-# FONT REGISTRATION
-# -------------------------------------------------------------------
-# Make sure Montserrat-Regular.ttf is in your project folder
-pdfmetrics.registerFont(TTFont("Montserrat", "Montserrat-Regular.ttf"))
 
 # -------------------------------------------------------------------
 # IMAGE HELPER: round chart corners
@@ -96,18 +88,18 @@ def export_report_to_pdf(all_tables, all_figs, logo_path):
 
     elements = []
 
-    # Styles
+    # Styles using built-in Helvetica
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
-        name="Heading1", fontName="Montserrat", fontSize=18,
+        name="Heading1", fontName="Helvetica-Bold", fontSize=18,
         textColor=colors.HexColor("#1f77b4"), spaceAfter=12, leading=22
     ))
     styles.add(ParagraphStyle(
-        name="Heading2", fontName="Montserrat", fontSize=14,
+        name="Heading2", fontName="Helvetica-Bold", fontSize=14,
         textColor=colors.HexColor("#1f77b4"), spaceAfter=8, leading=18
     ))
     styles.add(ParagraphStyle(
-        name="Normal", fontName="Montserrat", fontSize=10, leading=14
+        name="Normal", fontName="Helvetica", fontSize=10, leading=14
     ))
 
     # --- Cover page ---
@@ -135,7 +127,7 @@ def export_report_to_pdf(all_tables, all_figs, logo_path):
         data = [table.columns.tolist()] + table.astype(str).values.tolist()
         pdf_table = Table(data, hAlign="LEFT")
         pdf_table.setStyle(TableStyle([
-            ("FONTNAME", (0, 0), (-1, -1), "Montserrat"),
+            ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f77b4")),
@@ -176,4 +168,3 @@ def export_buttons(all_tables, all_figs, logo_path="stri_logo.png"):
             file_name="assessment_report.pdf",
             mime="application/pdf"
         )
-
