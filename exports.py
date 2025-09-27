@@ -6,13 +6,8 @@ from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle, Paragraph,
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 from PIL import Image as PILImage, ImageDraw
-
-# --- Register Montserrat font (ensure Montserrat-Regular.ttf is in your project folder) ---
-pdfmetrics.registerFont(TTFont("Montserrat", "Montserrat-Regular.ttf"))
 
 # --- Helper: Round corners on chart images ---
 def round_corners(img_bytes, radius=25, bg_color="#E6F0FA"):
@@ -33,9 +28,10 @@ def round_corners(img_bytes, radius=25, bg_color="#E6F0FA"):
 def add_footer(canvas_obj, doc, logo_path):
     canvas_obj.saveState()
     if logo_path:
-        canvas_obj.drawImage(logo_path, x=40, y=20, width=60, height=25, preserveAspectRatio=True, mask='auto')
+        canvas_obj.drawImage(logo_path, x=40, y=20, width=60, height=25,
+                             preserveAspectRatio=True, mask='auto')
     page_num = canvas_obj.getPageNumber()
-    canvas_obj.setFont("Montserrat", 8)
+    canvas_obj.setFont("Helvetica", 8)
     canvas_obj.setFillColor(colors.grey)
     canvas_obj.drawRightString(A4[0]-40, 30, f"Page {page_num}")
     canvas_obj.restoreState()
@@ -52,7 +48,12 @@ def export_tables_to_excel(all_tables, logo_path=None):
             worksheet = writer.sheets[sheet_name]
 
             # STRI light blue branding
-            fmt_header = workbook.add_format({"bg_color": "#1f77b4", "font_color": "white", "bold": True, "border": 1})
+            fmt_header = workbook.add_format({
+                "bg_color": "#1f77b4",
+                "font_color": "white",
+                "bold": True,
+                "border": 1
+            })
             fmt_center = workbook.add_format({"align": "center", "border": 1})
             fmt_num = workbook.add_format({"num_format": "0.00", "border": 1})
 
@@ -91,19 +92,19 @@ def export_report_to_pdf(all_tables, all_figs, logo_path):
     # Styles
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Heading1",
-                              fontName="Montserrat",
+                              fontName="Helvetica",
                               fontSize=18,
                               textColor=colors.HexColor("#1f77b4"),
                               spaceAfter=12,
                               leading=22))
     styles.add(ParagraphStyle(name="Heading2",
-                              fontName="Montserrat",
+                              fontName="Helvetica",
                               fontSize=14,
                               textColor=colors.HexColor("#1f77b4"),
                               spaceAfter=8,
                               leading=18))
     styles.add(ParagraphStyle(name="Normal",
-                              fontName="Montserrat",
+                              fontName="Helvetica",
                               fontSize=10,
                               leading=14))
 
@@ -144,7 +145,7 @@ def export_report_to_pdf(all_tables, all_figs, logo_path):
         data = [table.columns.tolist()] + table.astype(str).values.tolist()
         pdf_table = Table(data, hAlign="LEFT")
         pdf_table.setStyle(TableStyle([
-            ("FONTNAME", (0, 0), (-1, -1), "Montserrat"),
+            ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f77b4")),
@@ -166,7 +167,7 @@ def export_report_to_pdf(all_tables, all_figs, logo_path):
 
     return buffer
 
-# --- Streamlit UI (put in app.py or main page) ---
+# --- Streamlit UI ---
 def export_buttons(all_tables, all_figs, logo_path="stri_logo.png"):
     st.sidebar.header("Export Options")
 
