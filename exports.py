@@ -9,7 +9,27 @@ from reportlab.platypus import (
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from PIL import Image as PILImage  # still here if needed later
+from reportlab.pdfgen import canvas
+from PIL import Image as PILImage
+
+# -------------------------------------------------------------------
+# FOOTER DRAWING
+# -------------------------------------------------------------------
+def add_footer(canvas, doc, logo_path=None):
+    """Draw logo + page number in footer of each page."""
+    width, height = landscape(A4)
+
+    # Page number (bottom-right)
+    page_num = canvas.getPageNumber()
+    canvas.setFont("Helvetica", 9)
+    canvas.drawRightString(width - 40, 20, f"Page {page_num}")
+
+    # Logo (bottom-left)
+    if logo_path and os.path.exists(logo_path):
+        try:
+            canvas.drawImage(logo_path, 40, 10, width=60, height=25, preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
 
 # -------------------------------------------------------------------
 # EXCEL EXPORT
@@ -35,7 +55,7 @@ def export_tables_to_excel(all_tables, logo_path=None):
 
             rows, cols = table.shape
 
-            # Insert logo at top-left (safe check)
+            # Insert logo at top-left
             if logo_path and os.path.exists(logo_path):
                 worksheet.insert_image("A1", logo_path, {"x_scale": 0.3, "y_scale": 0.3})
 
@@ -62,16 +82,15 @@ def export_tables_to_excel(all_tables, logo_path=None):
 def export_report_to_pdf(all_tables, all_figs, logo_path=None):
     """Return a BytesIO PDF report with STRI branding and charts."""
     buffer = BytesIO()
-    # Landscape A4
     doc = SimpleDocTemplate(
         buffer, pagesize=landscape(A4),
         leftMargin=30, rightMargin=30,
-        topMargin=40, bottomMargin=40
+        topMargin=50, bottomMargin=50
     )
 
     elements = []
 
-    # Styles with unique names
+    # Styles
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
         name="STRIHeading1", fontName="Helvetica-Bold", fontSize=18,
@@ -97,17 +116,17 @@ def export_report_to_pdf(all_tables, all_figs, logo_path=None):
     for assess, table in all_tables.items():
         elements.append(Paragraph(f"{assess} Results", styles["STRIHeading2"]))
 
-        # Chart (larger, full width, with border)
+        # Chart (make letters larger, full width, border)
         if all_figs and assess in all_figs:
             fig_bytes = BytesIO()
             try:
-                # Plotly export (high resolution so letters are sharp)
+                # Bump font size for annotations
+                all_figs[assess].update_layout(font=dict(size=16))
                 all_figs[assess].write_image(fig_bytes, format="png", scale=2)
                 fig_bytes.seek(0)
 
                 chart_img = Image(fig_bytes, width=720, height=400)
 
-                # Wrap image in a table to add border
                 chart_table = Table([[chart_img]], colWidths=[720])
                 chart_table.setStyle(TableStyle([
                     ("BOX", (0, 0), (-1, -1), 1.5, colors.HexColor("#1f77b4")),
@@ -116,21 +135,20 @@ def export_report_to_pdf(all_tables, all_figs, logo_path=None):
                 ]))
 
                 elements.append(chart_table)
-                elements.append(Spacer(1, 20))
+                elements.append(PageBreak())  # chart gets full page
             except Exception as e:
                 elements.append(Paragraph(
                     f"(Chart for {assess} could not be exported: {e})",
                     styles["STRINormal"]
                 ))
-                elements.append(Spacer(1, 12))
+                elements.append(PageBreak())
 
-        # Table (smaller, compact font)
+        # Table (fit to page, compact, one per page)
         data = [table.columns.tolist()] + table.astype(str).values.tolist()
-        col_widths = [70] + [55] * (len(table.columns) - 1)
-        pdf_table = Table(data, hAlign="LEFT", colWidths=col_widths)
+        pdf_table = Table(data, hAlign="LEFT", colWidths="*")
         pdf_table.setStyle(TableStyle([
             ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-            ("FONTSIZE", (0, 0), (-1, -1), 7),   # compact
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f77b4")),
             ("ALIGN", (0, 0), (-1, 0), "CENTER"),
@@ -142,7 +160,9 @@ def export_report_to_pdf(all_tables, all_figs, logo_path=None):
         elements.append(pdf_table)
         elements.append(PageBreak())
 
-    doc.build(elements)
+    # Build doc with footer callback
+    doc.build(elements, onFirstPage=lambda c, d: add_footer(c, d, logo_path),
+              onLaterPages=lambda c, d: add_footer(c, d, logo_path))
     return buffer
 
 # -------------------------------------------------------------------
@@ -153,7 +173,6 @@ def export_buttons(all_tables, all_figs, logo_path="download.jpg"):
     with st.sidebar:
         st.subheader("Exports")
 
-        # Excel button
         excel_buffer = export_tables_to_excel(all_tables, logo_path)
         st.download_button(
             "⬇️ Download Excel",
@@ -162,7 +181,6 @@ def export_buttons(all_tables, all_figs, logo_path="download.jpg"):
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        # PDF button
         pdf_buffer = export_report_to_pdf(all_tables, all_figs, logo_path)
         st.download_button(
             "⬇️ Download PDF",
