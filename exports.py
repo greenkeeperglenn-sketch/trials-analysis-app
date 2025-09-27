@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from io import BytesIO
 import streamlit as st
@@ -53,8 +54,8 @@ def export_tables_to_excel(all_tables, logo_path=None):
 
             rows, cols = table.shape
 
-            # Insert logo at top-left
-            if logo_path:
+            # Insert logo at top-left (safe check)
+            if logo_path and os.path.exists(logo_path):
                 worksheet.insert_image("A1", logo_path, {"x_scale": 0.3, "y_scale": 0.3})
 
             # Header row
@@ -77,7 +78,7 @@ def export_tables_to_excel(all_tables, logo_path=None):
 # -------------------------------------------------------------------
 # PDF EXPORT
 # -------------------------------------------------------------------
-def export_report_to_pdf(all_tables, all_figs, logo_path):
+def export_report_to_pdf(all_tables, all_figs, logo_path=None):
     """Return a BytesIO PDF report with STRI branding and charts."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -103,7 +104,7 @@ def export_report_to_pdf(all_tables, all_figs, logo_path):
     ))
 
     # --- Cover page ---
-    if logo_path:
+    if logo_path and os.path.exists(logo_path):
         elements.append(Image(logo_path, width=250, height=100))
     elements.append(Spacer(1, 60))
     elements.append(Paragraph("Trial Assessment Report 2025", styles["STRIHeading1"]))
@@ -146,7 +147,7 @@ def export_report_to_pdf(all_tables, all_figs, logo_path):
 # -------------------------------------------------------------------
 # SIDEBAR EXPORT BUTTONS
 # -------------------------------------------------------------------
-def export_buttons(all_tables, all_figs, logo_path="stri_logo.png"):
+def export_buttons(all_tables, all_figs, logo_path="download.jpg"):
     """Render global export buttons in the sidebar."""
     with st.sidebar:
         st.subheader("Exports")
