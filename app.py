@@ -167,3 +167,9 @@ if data is not None:
         all_figs,
         logo_path="541ee314-eafe-49ca-be67-355683e0420d.png"  # path to STRI logo
     )
+exports.export_buttons(
+    all_tables,
+    all_figs,
+    logo_path="download.jpg"   # your logo in repo root
+)
+
