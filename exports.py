@@ -118,11 +118,19 @@ def export_report_to_pdf(all_tables, all_figs, logo_path=None):
         # Chart (if available)
         if all_figs and assess in all_figs:
             fig_bytes = BytesIO()
-            all_figs[assess].savefig(fig_bytes, format="png", bbox_inches="tight")
-            fig_bytes.seek(0)
-            rounded_bytes = round_corners(fig_bytes)
-            elements.append(Image(rounded_bytes, width=400, height=250))
-            elements.append(Spacer(1, 12))
+            try:
+                # Plotly export (requires kaleido)
+                all_figs[assess].write_image(fig_bytes, format="png")
+                fig_bytes.seek(0)
+                rounded_bytes = round_corners(fig_bytes)
+                elements.append(Image(rounded_bytes, width=400, height=250))
+                elements.append(Spacer(1, 12))
+            except Exception as e:
+                elements.append(Paragraph(
+                    f"(Chart for {assess} could not be exported: {e})",
+                    styles["STRINormal"]
+                ))
+                elements.append(Spacer(1, 12))
 
         # Table
         data = [table.columns.tolist()] + table.astype(str).values.tolist()
