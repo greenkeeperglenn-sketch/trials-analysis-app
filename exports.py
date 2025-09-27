@@ -6,29 +6,10 @@ from reportlab.platypus import (
     SimpleDocTemplate, Table, TableStyle, Paragraph,
     Image, Spacer, PageBreak
 )
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from PIL import Image as PILImage, ImageDraw
-
-# -------------------------------------------------------------------
-# IMAGE HELPER: round chart corners
-# -------------------------------------------------------------------
-def round_corners(img_bytes, radius=25, bg_color="#E6F0FA"):
-    """Apply rounded corners and a light-blue background to chart image."""
-    img = PILImage.open(img_bytes).convert("RGBA")
-
-    mask = PILImage.new("L", img.size, 0)
-    draw = ImageDraw.Draw(mask)
-    draw.rounded_rectangle([(0, 0), img.size], radius=radius, fill=255)
-
-    rounded = PILImage.new("RGBA", img.size, bg_color)
-    rounded.paste(img, (0, 0), mask=mask)
-
-    out_bytes = BytesIO()
-    rounded.save(out_bytes, format="PNG")
-    out_bytes.seek(0)
-    return out_bytes
+from PIL import Image as PILImage  # still here if needed later
 
 # -------------------------------------------------------------------
 # EXCEL EXPORT
@@ -81,10 +62,11 @@ def export_tables_to_excel(all_tables, logo_path=None):
 def export_report_to_pdf(all_tables, all_figs, logo_path=None):
     """Return a BytesIO PDF report with STRI branding and charts."""
     buffer = BytesIO()
+    # Landscape A4
     doc = SimpleDocTemplate(
-        buffer, pagesize=A4,
-        leftMargin=40, rightMargin=40,
-        topMargin=50, bottomMargin=50
+        buffer, pagesize=landscape(A4),
+        leftMargin=30, rightMargin=30,
+        topMargin=40, bottomMargin=40
     )
 
     elements = []
@@ -105,8 +87,8 @@ def export_report_to_pdf(all_tables, all_figs, logo_path=None):
 
     # --- Cover page ---
     if logo_path and os.path.exists(logo_path):
-        elements.append(Image(logo_path, width=250, height=100))
-    elements.append(Spacer(1, 60))
+        elements.append(Image(logo_path, width=300, height=120))
+    elements.append(Spacer(1, 80))
     elements.append(Paragraph("Trial Assessment Report 2025", styles["STRIHeading1"]))
     elements.append(Paragraph("Prepared by STRI Group", styles["STRINormal"]))
     elements.append(PageBreak())
@@ -115,16 +97,26 @@ def export_report_to_pdf(all_tables, all_figs, logo_path=None):
     for assess, table in all_tables.items():
         elements.append(Paragraph(f"{assess} Results", styles["STRIHeading2"]))
 
-        # Chart (if available)
+        # Chart (larger, full width, with border)
         if all_figs and assess in all_figs:
             fig_bytes = BytesIO()
             try:
-                # Plotly export (requires kaleido)
-                all_figs[assess].write_image(fig_bytes, format="png")
+                # Plotly export (high resolution so letters are sharp)
+                all_figs[assess].write_image(fig_bytes, format="png", scale=2)
                 fig_bytes.seek(0)
-                rounded_bytes = round_corners(fig_bytes)
-                elements.append(Image(rounded_bytes, width=400, height=250))
-                elements.append(Spacer(1, 12))
+
+                chart_img = Image(fig_bytes, width=720, height=400)
+
+                # Wrap image in a table to add border
+                chart_table = Table([[chart_img]], colWidths=[720])
+                chart_table.setStyle(TableStyle([
+                    ("BOX", (0, 0), (-1, -1), 1.5, colors.HexColor("#1f77b4")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ]))
+
+                elements.append(chart_table)
+                elements.append(Spacer(1, 20))
             except Exception as e:
                 elements.append(Paragraph(
                     f"(Chart for {assess} could not be exported: {e})",
@@ -132,12 +124,13 @@ def export_report_to_pdf(all_tables, all_figs, logo_path=None):
                 ))
                 elements.append(Spacer(1, 12))
 
-        # Table
+        # Table (smaller, compact font)
         data = [table.columns.tolist()] + table.astype(str).values.tolist()
-        pdf_table = Table(data, hAlign="LEFT")
+        col_widths = [70] + [55] * (len(table.columns) - 1)
+        pdf_table = Table(data, hAlign="LEFT", colWidths=col_widths)
         pdf_table.setStyle(TableStyle([
             ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("FONTSIZE", (0, 0), (-1, -1), 7),   # compact
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f77b4")),
             ("ALIGN", (0, 0), (-1, 0), "CENTER"),
