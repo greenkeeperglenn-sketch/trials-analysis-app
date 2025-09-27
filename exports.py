@@ -1,87 +1,189 @@
 import pandas as pd
 from io import BytesIO
 import streamlit as st
+from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle, Paragraph,
+                                Image, Spacer, PageBreak)
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfgen import canvas
+from PIL import Image as PILImage, ImageDraw
 
-def export_tables_to_excel(all_tables):
-    """Export stats tables to Excel with formatting."""
+# --- Register Montserrat font (ensure Montserrat-Regular.ttf is in your project folder) ---
+pdfmetrics.registerFont(TTFont("Montserrat", "Montserrat-Regular.ttf"))
 
+# --- Helper: Round corners on chart images ---
+def round_corners(img_bytes, radius=25, bg_color="#E6F0FA"):
+    img = PILImage.open(img_bytes).convert("RGBA")
+    mask = PILImage.new("L", img.size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rounded_rectangle([(0, 0), img.size], radius=radius, fill=255)
+
+    rounded = PILImage.new("RGBA", img.size, bg_color)
+    rounded.paste(img, (0, 0), mask=mask)
+
+    out_bytes = BytesIO()
+    rounded.save(out_bytes, format="PNG")
+    out_bytes.seek(0)
+    return out_bytes
+
+# --- Footer callback for PDF ---
+def add_footer(canvas_obj, doc, logo_path):
+    canvas_obj.saveState()
+    if logo_path:
+        canvas_obj.drawImage(logo_path, x=40, y=20, width=60, height=25, preserveAspectRatio=True, mask='auto')
+    page_num = canvas_obj.getPageNumber()
+    canvas_obj.setFont("Montserrat", 8)
+    canvas_obj.setFillColor(colors.grey)
+    canvas_obj.drawRightString(A4[0]-40, 30, f"Page {page_num}")
+    canvas_obj.restoreState()
+
+# --- Excel Export ---
+def export_tables_to_excel(all_tables, logo_path=None):
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
         for assess, table in all_tables.items():
-            sheet_name = assess[:30]  # Excel sheet name limit
-            table.to_excel(writer, sheet_name=sheet_name, index=False, startrow=0)
+            sheet_name = assess[:30]
+            table.to_excel(writer, sheet_name=sheet_name, index=False, startrow=2)
 
             workbook = writer.book
             worksheet = writer.sheets[sheet_name]
 
-            # --- Formats ---
-            fmt_header = workbook.add_format({"bg_color": "#D9D9D9", "border": 1, "bold": True})
-            fmt_treat = workbook.add_format({"bg_color": "#D9D9D9", "border": 1})
+            # STRI light blue branding
+            fmt_header = workbook.add_format({"bg_color": "#1f77b4", "font_color": "white", "bold": True, "border": 1})
             fmt_center = workbook.add_format({"align": "center", "border": 1})
-            fmt_num_2dp = workbook.add_format({"num_format": "0.00", "border": 1})
-            fmt_num_3dp = workbook.add_format({"num_format": "0.000", "border": 1})
-            fmt_num_4dp = workbook.add_format({"num_format": "0.0000", "border": 1})
-            fmt_num_1dp = workbook.add_format({"num_format": "0.0", "border": 1})
-            fmt_int = workbook.add_format({"num_format": "0", "border": 1})
-
-            fmt_summary = workbook.add_format({
-                "bg_color": "#D9D9D9",
-                "align": "right",
-                "border": 2,
-                "bold": True
-            })
+            fmt_num = workbook.add_format({"num_format": "0.00", "border": 1})
 
             rows, cols = table.shape
 
-            # --- Grey header row ---
+            # Insert STRI logo at top if provided
+            if logo_path:
+                worksheet.insert_image("A1", logo_path, {"x_scale": 0.3, "y_scale": 0.3})
+
+            # Header formatting
             for j, col in enumerate(table.columns):
-                worksheet.write(0, j, col, fmt_header)
+                worksheet.write(2, j, col, fmt_header)
 
-            # --- Apply formatting row by row ---
-            for i in range(1, rows+1):  # +1 because header is row 0
-                treat_name = str(table.iloc[i-1, 0])
-
-                for j, col in enumerate(table.columns):
-                    val = table.iloc[i-1, j]
-
-                    if j == 0:  # Treatment column
-                        fmt = fmt_treat
-                        worksheet.write(i, j, val, fmt)
-                        continue
-
-                    if col.endswith(" S"):  # Letters column
-                        fmt = fmt_center
-                        worksheet.write(i, j, "" if val == "" else str(val), fmt)
-                        continue
-
-                    # Summary rows
-                    if treat_name == "P":
-                        worksheet.write(i, j, None if val in ["", "ns"] else float(val), fmt_num_3dp)
-                    elif treat_name == "LSD":
-                        worksheet.write(i, j, None if val in ["", "-"] else float(val), fmt_num_4dp)
-                    elif treat_name == "d.f.":
-                        worksheet.write(i, j, None if val == "" else int(float(val)), fmt_int)
-                    elif treat_name == "%CV":
-                        worksheet.write(i, j, None if val == "" else float(val), fmt_num_1dp)
+            # Data formatting
+            for i in range(rows):
+                for j in range(cols):
+                    val = table.iloc[i, j]
+                    if isinstance(val, (int, float)):
+                        worksheet.write(i+3, j, val, fmt_num)
                     else:
-                        # Treatment means
-                        worksheet.write(i, j, None if val == "" else float(val), fmt_num_2dp)
+                        worksheet.write(i+3, j, val, fmt_center)
 
-                # If it's a summary row, reapply bold grey format
-                if treat_name in ["P", "LSD", "d.f.", "%CV"]:
-                    for j in range(cols):
-                        worksheet.write(i, j, table.iloc[i-1, j], fmt_summary)
+            worksheet.set_column(0, cols-1, 15)
 
-            # --- AutoFit column widths ---
-            for j, col in enumerate(table.columns):
-                col_data = [str(x) for x in table.iloc[:, j]]
-                max_len = max([len(str(col))] + [len(x) for x in col_data if x != ""])
-                worksheet.set_column(j, j, max_len + 2)
+    return buffer
 
-    # Download button
-    st.download_button(
-        "Download Tables (Excel)",
-        data=buffer.getvalue(),
+# --- PDF Export ---
+def export_report_to_pdf(all_tables, all_figs, logo_path):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            leftMargin=40, rightMargin=40,
+                            topMargin=50, bottomMargin=50)
+
+    elements = []
+
+    # Styles
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Heading1",
+                              fontName="Montserrat",
+                              fontSize=18,
+                              textColor=colors.HexColor("#1f77b4"),
+                              spaceAfter=12,
+                              leading=22))
+    styles.add(ParagraphStyle(name="Heading2",
+                              fontName="Montserrat",
+                              fontSize=14,
+                              textColor=colors.HexColor("#1f77b4"),
+                              spaceAfter=8,
+                              leading=18))
+    styles.add(ParagraphStyle(name="Normal",
+                              fontName="Montserrat",
+                              fontSize=10,
+                              leading=14))
+
+    # --- Cover Page ---
+    if logo_path:
+        elements.append(Image(logo_path, width=250, height=100))
+    elements.append(Spacer(1, 60))
+    elements.append(Paragraph("Trial Assessment Report 2025", styles["Heading1"]))
+    elements.append(Paragraph("Prepared by STRI Group", styles["Normal"]))
+    elements.append(Spacer(1, 300))
+    elements.append(Paragraph("Confidential – For internal use only", styles["Normal"]))
+    elements.append(PageBreak())
+
+    # --- Executive Summary ---
+    elements.append(Paragraph("Executive Summary", styles["Heading1"]))
+    elements.append(Paragraph(
+        "This section provides a concise overview of key findings and insights. "
+        "Replace this text with bullet points or summary narrative as appropriate.",
+        styles["Normal"]
+    ))
+    elements.append(PageBreak())
+
+    # --- Assessment Sections ---
+    for assess, table in all_tables.items():
+        elements.append(Paragraph(f"{assess} Results", styles["Heading2"]))
+
+        # Chart
+        if assess in all_figs:
+            fig_bytes = BytesIO()
+            all_figs[assess].savefig(fig_bytes, format="png", bbox_inches="tight")
+            fig_bytes.seek(0)
+            rounded_bytes = round_corners(fig_bytes, radius=25, bg_color="#E6F0FA")
+            elements.append(Image(rounded_bytes, width=400, height=250))
+            elements.append(Paragraph("Figure: Mean values with statistical groupings", styles["Normal"]))
+            elements.append(Spacer(1, 12))
+
+        # Table
+        data = [table.columns.tolist()] + table.astype(str).values.tolist()
+        pdf_table = Table(data, hAlign="LEFT")
+        pdf_table.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), "Montserrat"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f77b4")),
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.lightgrey]),
+            ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(pdf_table)
+        elements.append(Spacer(1, 24))
+        elements.append(PageBreak())
+
+    # Build PDF
+    doc.build(elements,
+              onLaterPages=lambda c, d: add_footer(c, d, logo_path),
+              onFirstPage=lambda c, d: add_footer(c, d, logo_path))
+
+    return buffer
+
+# --- Streamlit UI (put in app.py or main page) ---
+def export_buttons(all_tables, all_figs, logo_path="stri_logo.png"):
+    st.sidebar.header("Export Options")
+
+    # Excel
+    excel_buffer = export_tables_to_excel(all_tables, logo_path)
+    st.sidebar.download_button(
+        "⬇️ Download Tables (Excel)",
+        data=excel_buffer.getvalue(),
         file_name="assessment_tables.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # PDF
+    pdf_buffer = export_report_to_pdf(all_tables, all_figs, logo_path)
+    st.sidebar.download_button(
+        "⬇️ Download Report (PDF)",
+        data=pdf_buffer.getvalue(),
+        file_name="assessment_report.pdf",
+        mime="application/pdf"
     )
