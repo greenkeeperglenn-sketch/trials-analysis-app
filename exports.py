@@ -88,31 +88,31 @@ def export_report_to_pdf(all_tables, all_figs, logo_path):
 
     elements = []
 
-    # Styles using built-in Helvetica
+    # Styles with unique names
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
-        name="Heading1", fontName="Helvetica-Bold", fontSize=18,
+        name="STRIHeading1", fontName="Helvetica-Bold", fontSize=18,
         textColor=colors.HexColor("#1f77b4"), spaceAfter=12, leading=22
     ))
     styles.add(ParagraphStyle(
-        name="Heading2", fontName="Helvetica-Bold", fontSize=14,
+        name="STRIHeading2", fontName="Helvetica-Bold", fontSize=14,
         textColor=colors.HexColor("#1f77b4"), spaceAfter=8, leading=18
     ))
     styles.add(ParagraphStyle(
-        name="Normal", fontName="Helvetica", fontSize=10, leading=14
+        name="STRINormal", fontName="Helvetica", fontSize=10, leading=14
     ))
 
     # --- Cover page ---
     if logo_path:
         elements.append(Image(logo_path, width=250, height=100))
     elements.append(Spacer(1, 60))
-    elements.append(Paragraph("Trial Assessment Report 2025", styles["Heading1"]))
-    elements.append(Paragraph("Prepared by STRI Group", styles["Normal"]))
+    elements.append(Paragraph("Trial Assessment Report 2025", styles["STRIHeading1"]))
+    elements.append(Paragraph("Prepared by STRI Group", styles["STRINormal"]))
     elements.append(PageBreak())
 
     # --- Assessment sections ---
     for assess, table in all_tables.items():
-        elements.append(Paragraph(f"{assess} Results", styles["Heading2"]))
+        elements.append(Paragraph(f"{assess} Results", styles["STRIHeading2"]))
 
         # Chart (if available)
         if all_figs and assess in all_figs:
