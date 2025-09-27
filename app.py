@@ -7,7 +7,7 @@ import charts
 import stats
 import data_loader
 import helpers
-import exports  # <-- our new exports.py
+import exports  # <-- our exports.py
 
 st.set_page_config(layout="wide")
 st.title("Assessment Data Explorer")
@@ -25,6 +25,12 @@ alpha_label = st.sidebar.radio("Significance level:", list(alpha_options.keys())
 alpha_choice = alpha_options[alpha_label]
 
 # ----------------------
+# Prepare containers
+# ----------------------
+all_tables = {}  # always exists
+all_figs = {}    # always exists
+
+# ----------------------
 # Load data
 # ----------------------
 data, treatments, date_labels_ordered = data_loader.load_data()
@@ -39,9 +45,6 @@ if data is not None:
         t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
         for i, t in enumerate(treatments)
     }
-
-    all_tables = {}  # raw stats tables
-    all_figs = {}    # charts for export
 
     # ----------------------
     # Loop through assessments
@@ -159,17 +162,12 @@ if data is not None:
                 # Save table for export
                 all_tables[assess] = wide_table
 
-    # ----------------------
-    # Global Exports (sidebar)
-    # ----------------------
+# ----------------------
+# Global Exports (sidebar)
+# ----------------------
+if all_tables:  # only show if something to export
     exports.export_buttons(
         all_tables,
         all_figs,
-        logo_path="541ee314-eafe-49ca-be67-355683e0420d.png"  # path to STRI logo
+        logo_path="download.jpg"   # your logo in repo root
     )
-exports.export_buttons(
-    all_tables,
-    all_figs,
-    logo_path="download.jpg"   # your logo in repo root
-)
-
