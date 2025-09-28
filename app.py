@@ -16,100 +16,74 @@ st.set_page_config(
     layout="wide"
 )
 
-# Inject Montserrat font + STRI colour scheme + fixes
+# ---- Brand CSS (reverted scrolling header, stronger widget overrides) ----
 st.markdown(
     """
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
-
     <style>
-    html, body, [class*="css"] {
-        font-family: 'Montserrat', sans-serif;
-    }
-    :root {
-        --primary: #0B6580;
-        --secondary: #59B37D;
-        --accent: #40B5AB;
-        --dark: #004754;
+    html, body, [class*="css"] { font-family: 'Montserrat', sans-serif; }
+    :root{
+      --primary:#0B6580; --secondary:#59B37D; --accent:#40B5AB; --dark:#004754;
     }
 
-    /* Sidebar background + text */
-    section[data-testid="stSidebar"] {
-        background-color: var(--dark);
+    /* Sidebar */
+    section[data-testid="stSidebar"]{ background-color:var(--dark); }
+    section[data-testid="stSidebar"] *{ color:white !important; }
+
+    /* Buttons + Download buttons (black text on white; teal hover -> white text) */
+    .stButton>button, .stDownloadButton>button{
+      background:#fff !important; color:#000 !important;
+      border:1px solid var(--accent) !important; border-radius:6px;
+      font-weight:600; padding:.5em 1em;
     }
-    section[data-testid="stSidebar"] * {
-        color: white !important;
+    .stButton>button:hover, .stDownloadButton>button:hover{
+      background:var(--accent) !important; color:#fff !important;
+    }
+    .stButton>button:active, .stDownloadButton>button:active{
+      background:var(--primary) !important; color:#fff !important; border-color:var(--primary) !important;
     }
 
-    /* Fixed header logo */
-    .fixed-logo {
-        position: fixed;
-        top: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 999;
-        background-color: #fff;
-        padding: 8px 0;
-        width: 100%;
-        text-align: center;
-        border-bottom: 2px solid var(--accent);
+    /* Inputs & uploader: white boxes, BLACK text */
+    div[data-testid="stFileUploader"], div[data-baseweb="input"], div[data-baseweb="select"]{
+      background:#fff !important; color:#000 !important; border:1px solid var(--accent); border-radius:6px;
     }
-    .stApp {
-        margin-top: 200px; /* pushes content down so logo doesn't overlap */
-    }
+    input, textarea, select { color:#000 !important; }
+    .stTextInput input, .stNumberInput input, .stTextArea textarea{ color:#000 !important; background:#fff !important; }
+    /* dropdown options */
+    div[data-baseweb="popover"] *{ color:#000 !important; }
 
-    /* Buttons + Export buttons */
-    .stButton>button, .stDownloadButton>button {
-        background-color: white !important;
-        color: black !important;
-        border: 1px solid var(--accent) !important;
-        border-radius: 6px;
-        font-weight: 600;
-        padding: 0.5em 1em;
+    /* Kill Streamlit red: radios, checkboxes, switches, sliders -> accent teal */
+    /* Radio */
+    [data-baseweb="radio"] svg{ color:var(--accent) !important; fill:var(--accent) !important; }
+    [data-baseweb="radio"] div[role="radio"]{ border-color:var(--accent) !important; }
+    [data-baseweb="radio"] div[role="radio"][aria-checked="true"]{
+      background:var(--accent) !important; border-color:var(--accent) !important;
     }
-    .stButton>button:hover, .stDownloadButton>button:hover {
-        background-color: var(--accent) !important;
-        color: white !important;
+    /* Checkbox */
+    div[role="checkbox"]{ border-color:var(--accent) !important; }
+    div[role="checkbox"][aria-checked="true"]{
+      background:var(--accent) !important; border-color:var(--accent) !important;
     }
+    /* Switch */
+    div[role="switch"]{ border-color:var(--accent) !important; }
+    div[role="switch"][aria-checked="true"]{ background:var(--accent) !important; }
+    /* Slider (BaseWeb) */
+    [data-baseweb="slider"] [aria-valuenow]{ background:var(--accent) !important; border-color:var(--accent) !important; }
 
-    /* Inputs & uploader */
-    div[data-testid="stFileUploader"],
-    div[data-baseweb="input"],
-    div[data-baseweb="select"] {
-        background-color: #ffffff !important;
-        color: black !important;
-        border-radius: 6px;
-        border: 1px solid var(--accent);
-    }
-    div[data-baseweb="popover"] * {
-        color: black !important;
-    }
-
-    /* Replace Streamlit red (radio, toggles, sliders, switches) */
-    [data-baseweb="radio"] div[role="radio"][aria-checked="true"],
-    .stCheckbox input:checked + div,
-    .stSwitch [data-checked="true"],
-    [data-baseweb="slider"] [aria-valuenow] {
-        background-color: var(--accent) !important;
-        border-color: var(--accent) !important;
-    }
-
-    /* Headers */
-    h1, h2, h3, h4 {
-        color: var(--accent);
-        font-weight: 600;
-    }
+    /* Headings */
+    h1,h2,h3,h4{ color:#40B5AB; font-weight:600; }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# --- Top logo + version (fixed) ---
+# ---- Top logo (large, centered, scrolls normally) ----
 st.markdown(
     """
-    <div class="fixed-logo">
-        <img src="https://raw.githubusercontent.com/greenkeeperglenn-sketch/trials-analysis-app/experiment-5/DataSynthesis%20logo.png" 
-             alt="DataSynthesis Logo" width="840">
-        <div style="font-size:20px; font-weight:600; color:#004754;">Version 1.1</div>
+    <div style="text-align:center; padding:8px 0 16px 0;">
+      <img src="https://raw.githubusercontent.com/greenkeeperglenn-sketch/trials-analysis-app/experiment-5/DataSynthesis%20logo.png"
+           alt="DataSynthesis Logo" width="800">
+      <div style="font-size:16px; font-weight:600; color:#004754; margin-top:4px;">Version 1.1</div>
     </div>
     """,
     unsafe_allow_html=True
@@ -120,7 +94,7 @@ st.markdown(
 # ----------------------
 st.sidebar.image(
     "https://raw.githubusercontent.com/greenkeeperglenn-sketch/trials-analysis-app/experiment-5/DataSynthesis%20logo.png",
-    width=160
+    width=150
 )
 st.sidebar.header("Global Settings")
 alpha_options = {
@@ -134,8 +108,7 @@ alpha_choice = alpha_options[alpha_label]
 # ----------------------
 # Prepare containers
 # ----------------------
-all_tables = {}
-all_figs = {}
+all_tables, all_figs = {}, {}
 
 # ----------------------
 # Load data
@@ -148,35 +121,22 @@ if data is not None:
         sorted(set(data["Assessment"].unique()))
     )
 
-    color_map = {
-        t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
-        for i, t in enumerate(treatments)
-    }
+    # (You can swap this for charts.make_color_map(treatments) if you prefer brand palette)
+    color_map = {t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
+                 for i, t in enumerate(treatments)}
 
     for assess in selected_assessments:
         with st.expander(f"Assessment: {assess}", expanded=False):
-            st.markdown(
-                f"<h2 style='text-align:center'>{assess}</h2>",
-                unsafe_allow_html=True
-            )
+            st.markdown(f"<h2 style='text-align:center'>{assess}</h2>", unsafe_allow_html=True)
 
             # Chart Settings
             with st.expander("Chart Settings", expanded=True):
-                chart_mode = st.radio(
-                    "Chart type",
-                    ["Boxplot", "Bar chart"],
-                    key=helpers.safe_key("chartmode", assess)
-                )
-                view_mode_chart = st.radio(
-                    "Grouping",
-                    ["By Date", "By Treatment"],
-                    key=helpers.safe_key("viewmode", assess)
-                )
-                a_is_lowest_chart = st.radio(
-                    "Lettering convention",
-                    ["Lowest = A", "Highest = A"],
-                    key=helpers.safe_key("letters", assess)
-                ) == "Lowest = A"
+                chart_mode = st.radio("Chart type", ["Boxplot", "Bar chart"],
+                                      key=helpers.safe_key("chartmode", assess))
+                view_mode_chart = st.radio("Grouping", ["By Date", "By Treatment"],
+                                           key=helpers.safe_key("viewmode", assess))
+                a_is_lowest_chart = st.radio("Lettering convention", ["Lowest = A", "Highest = A"],
+                                             key=helpers.safe_key("letters", assess)) == "Lowest = A"
 
                 add_se = add_lsd = add_letters = False
                 if chart_mode == "Bar chart":
@@ -194,66 +154,48 @@ if data is not None:
 
             # Treatment filter
             visible_treatments = st.multiselect(
-                "Show treatments",
-                options=treatments,
-                default=treatments,
+                "Show treatments", options=treatments, default=treatments,
                 key=helpers.safe_key("visible_treatments", assess),
             )
 
+            # Data
             df_sub = data[data["Assessment"] == assess].copy()
             df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
             df_sub = df_sub.dropna(subset=["Value"])
-            df_sub["DateLabel"] = pd.Categorical(
-                df_sub["DateLabel"],
-                categories=date_labels_ordered,
-                ordered=True,
-            )
+            df_sub["DateLabel"] = pd.Categorical(df_sub["DateLabel"],
+                                                 categories=date_labels_ordered, ordered=True)
 
             # Chart
             with st.expander("Chart", expanded=True):
                 if chart_mode == "Boxplot":
-                    fig = charts.make_boxplot(
-                        df_sub, treatments, date_labels_ordered,
-                        view_mode_chart, visible_treatments, color_map
-                    )
+                    fig = charts.make_boxplot(df_sub, treatments, date_labels_ordered,
+                                              view_mode_chart, visible_treatments, color_map)
                 else:
-                    fig = charts.make_barchart(
-                        df_sub, treatments, date_labels_ordered,
-                        view_mode_chart, visible_treatments,
-                        alpha_choice, a_is_lowest_chart,
-                        color_map, add_se, add_lsd, add_letters
-                    )
-
+                    fig = charts.make_barchart(df_sub, treatments, date_labels_ordered,
+                                               view_mode_chart, visible_treatments,
+                                               alpha_choice, a_is_lowest_chart,
+                                               color_map, add_se, add_lsd, add_letters)
                 fig.update_yaxes(range=[y_min, y_max])
                 fig.update_layout(height=500)
-
-                st.plotly_chart(fig, use_container_width=True,
-                                config={"displayModeBar": True})
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True})
                 all_figs[assess] = fig
 
-            # Stats Table
+            # Statistics Table
             with st.expander("Statistics Table", expanded=False):
                 df_stats = df_sub[df_sub["Treatment"].isin(visible_treatments)].copy()
                 wide_table, styled_table = stats.build_stats_table(
-                    df_stats, visible_treatments, date_labels_ordered,
-                    alpha_choice, a_is_lowest_chart
+                    df_stats, visible_treatments, date_labels_ordered, alpha_choice, a_is_lowest_chart
                 )
                 st.dataframe(
-                    styled_table,
-                    use_container_width=True,
-                    hide_index=True,
-                    height=500,
-                    column_config={
-                        "Treatment": st.column_config.Column("Treatment", pinned=True)
-                    }
+                    styled_table, use_container_width=True, hide_index=True, height=500,
+                    column_config={"Treatment": st.column_config.Column("Treatment", pinned=True)}
                 )
                 all_tables[assess] = wide_table
 
 # Global Exports
 if all_tables:
     exports.export_buttons(
-        all_tables,
-        all_figs,
+        all_tables, all_figs,
         logo_path="DataSynthesis logo.png",
         significance_label=alpha_label
     )
