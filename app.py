@@ -1,6 +1,5 @@
 # app.py
 
-import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -10,24 +9,55 @@ import charts
 import stats
 import data_loader
 import helpers
-import exports
-import setup   # <-- STRI styling
+import exports  # <-- our exports.py
 
-# ----------------------
-# Page config & branding
-# ----------------------
-st.set_page_config(layout="wide")
+# =========================================
+# Page config + STRI branding
+# =========================================
+st.set_page_config(
+    page_title="DataSynthesis by STRI",
+    page_icon="🧪",
+    layout="wide"
+)
 
-# Apply STRI styling (font + CSS)
-setup.apply_style()
+# Inject Montserrat font + STRI colour scheme
+st.markdown(
+    """
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
 
-# Resolve logo path safely (works locally & on Streamlit Cloud)
-logo_path = os.path.join(os.path.dirname(__file__), "DataSynthesis logo.png")
+    <style>
+    html, body, [class*="css"] {
+        font-family: 'Montserrat', sans-serif;
+    }
+    :root {
+        --primary: #0B6580;
+        --secondary: #59B37D;
+        --accent: #40B5AB;
+        --dark: #004754;
+    }
+    .stApp { background-color: #ffffff; }
+    section[data-testid="stSidebar"] { background-color: var(--dark); }
+    .stButton>button {
+        background-color: var(--secondary);
+        color: white;
+        border-radius: 6px;
+        font-weight: 600;
+        padding: 0.5em 1em;
+        border: none;
+    }
+    .stButton>button:hover { background-color: var(--primary); color: white; }
+    h1, h2, h3, h4 { color: var(--accent); font-weight: 600; }
+    p, span, div { color: #262730; }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-# Top branding: logo centered with version underneath
-if os.path.exists(logo_path):
-    st.image(logo_path, width=300)
-st.markdown("<h3 style='text-align:center;'>Version 1.1</h3>", unsafe_allow_html=True)
+# =========================================
+# Title / Logo
+# =========================================
+st.image("DataSynthesis logo.png", width=300)
+st.markdown("<h4 style='text-align:center; color:#004754;'>DataSynthesis v1.1</h4>", unsafe_allow_html=True)
 
 # ----------------------
 # Sidebar global settings
@@ -44,8 +74,8 @@ alpha_choice = alpha_options[alpha_label]
 # ----------------------
 # Prepare containers
 # ----------------------
-all_tables = {}  # assessment → DataFrame
-all_figs = {}    # assessment → Plotly Figure
+all_tables = {}
+all_figs = {}
 
 # ----------------------
 # Load data
@@ -58,11 +88,8 @@ if data is not None:
         sorted(set(data["Assessment"].unique()))
     )
 
-    # STRI colour palette for treatments
-    STRI_COLORS = ["#0B6580", "#59B37D", "#40B5AB", "#004754"]
-
     color_map = {
-        t: STRI_COLORS[i % len(STRI_COLORS)]
+        t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
         for i, t in enumerate(treatments)
     }
 
@@ -96,7 +123,7 @@ if data is not None:
                     key=helpers.safe_key("letters", assess)
                 ) == "Lowest = A"
 
-                # Bar chart specific toggles
+                # Bar chart toggles
                 add_se = add_lsd = add_letters = False
                 if chart_mode == "Bar chart":
                     add_se = st.checkbox("Add SE error bars", value=True,
@@ -106,7 +133,7 @@ if data is not None:
                     add_letters = st.checkbox("Add statistical letters", value=True,
                                               key=helpers.safe_key("letters_check", assess))
 
-                # Axis range controls
+                # Axis range
                 y_min = st.number_input("Y-axis minimum", value=0, step=1,
                                         key=helpers.safe_key("ymin", assess))
                 y_max = st.number_input("Y-axis maximum", value=100, step=1,
@@ -179,16 +206,15 @@ if data is not None:
                     }
                 )
 
-                # Save table for export
                 all_tables[assess] = wide_table
 
 # ----------------------
-# Global Exports (sidebar)
+# Global Exports
 # ----------------------
-if all_tables:  # only show if something to export
+if all_tables:
     exports.export_buttons(
         all_tables,
         all_figs,
-        logo_path=logo_path,  # pass safe path
+        logo_path="DataSynthesis logo.png",
         significance_label=alpha_label
     )
