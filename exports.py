@@ -5,31 +5,30 @@ from io import BytesIO
 import pandas as pd
 import numpy as np
 
-# Streamlit is only used for the buttons function
 import streamlit as st
 
-# ReportLab / PDF
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image, Spacer, PageBreak
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Image, Spacer, PageBreak
+)
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
-# Charts
 import plotly.graph_objects as go
 
 
 # =========================================
 # Brand Colours
 # =========================================
-PRIMARY   = colors.HexColor("#0B6580")   # headings / header rows
-SECONDARY = colors.HexColor("#59B37D")   # highlights (PLSD, D.F., %CV rows)
-ACCENT    = colors.HexColor("#40B5AB")   # borders, gridlines, page frame
-DARK      = colors.HexColor("#004754")   # axis text, footer text
+PRIMARY   = colors.HexColor("#0B6580")
+SECONDARY = colors.HexColor("#59B37D")
+ACCENT    = colors.HexColor("#40B5AB")
+DARK      = colors.HexColor("#004754")
 
 
 # =========================================
-# Helpers (shared)
+# Helpers
 # =========================================
 def _is_number(x):
     return isinstance(x, (int, float, np.integer, np.floating, np.number)) and pd.notna(x)
@@ -50,14 +49,13 @@ def _detect_stat_base(col_name: str, existing_cols: list[str]) -> str | None:
     return base if base in existing_cols else None
 
 def _set_fixed_widths_xlsxwriter(df, worksheet):
-    """Set fixed column widths for Excel."""
     for j, col in enumerate(df.columns):
         if j == 0:
             worksheet.set_column(j, j, 20)   # Treatment names
         elif col.endswith("S") or col.endswith("_S") or "(S)" in col:
             worksheet.set_column(j, j, 4)    # stats letters
         else:
-            worksheet.set_column(j, j, 10)   # numbers (LSD row defines width)
+            worksheet.set_column(j, j, 10)   # numbers
 
 
 # =========================================
@@ -71,7 +69,7 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
             cols = list(df.columns)
             ordered, used = [], set()
 
-            # Build ordered columns
+            # Order columns (base + stats col)
             for c in cols:
                 if c in used:
                     continue
@@ -89,33 +87,31 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
                         continue
                     ordered.append(s_col)
                     used.add(s_col)
-
             for c in cols:
                 if c not in used:
                     ordered.append(c)
                     used.add(c)
 
             df = df.reindex(columns=ordered)
-
             sheet_name = str(assess)[:30] if assess else "Sheet1"
             df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=2)
             workbook  = writer.book
             worksheet = writer.sheets[sheet_name]
 
             # Formats
-            fmt_header   = workbook.add_format({
+            fmt_header = workbook.add_format({
                 "bg_color": "#0B6580", "font_color": "white",
                 "bold": True, "border": 1, "align": "center", "valign": "vcenter",
                 "border_color": "#40B5AB", "rotation": 90
             })
-            fmt_text     = workbook.add_format({
+            fmt_text = workbook.add_format({
                 "align": "center", "valign": "vcenter",
                 "border": 1, "border_color": "#40B5AB"
             })
-            fmt_num      = workbook.add_format({
+            fmt_num = workbook.add_format({
                 "border": 1, "border_color": "#40B5AB"
             })
-            fmt_special  = workbook.add_format({
+            fmt_special = workbook.add_format({
                 "bg_color": "#59B37D", "font_color": "white",
                 "align": "center", "valign": "vcenter",
                 "border": 1, "border_color": "white"
@@ -135,10 +131,11 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
                     fmt = fmt_special if is_bottom_4 else (fmt_num if _is_number(val) else fmt_text)
                     if _is_number(val):
                         worksheet.write_number(i + 3, j, float(val), fmt)
+                    elif pd.isna(val):
+                        worksheet.write_blank(i + 3, j, None, fmt)
                     else:
                         worksheet.write(i + 3, j, str(val), fmt)
 
-            # Fixed widths
             _set_fixed_widths_xlsxwriter(df, worksheet)
 
     return buffer
@@ -147,12 +144,7 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
 # =========================================
 # PDF EXPORT
 # =========================================
-def export_report_to_pdf(
-    all_tables: dict[str, pd.DataFrame],
-    all_figs: dict[str, go.Figure],
-    logo_path: str = "DataSynthesis logo.png",
-    significance_label: str | None = None
-) -> BytesIO:
+def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png", significance_label=None) -> BytesIO:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=landscape(A4),
@@ -166,9 +158,9 @@ def export_report_to_pdf(
 
     elements = []
 
-    # ---------- Cover ----------
+    # Cover
     if logo_path and os.path.exists(logo_path):
-        elements.append(Image(logo_path, width=280, height=160))
+        elements.append(Image(logo_path, width=320, height=180))  # bigger logo
     elements.append(Spacer(1, 50))
     elements.append(Paragraph("Trial Assessment Report 2025", styles["DSHeading1"]))
     if significance_label:
@@ -177,7 +169,7 @@ def export_report_to_pdf(
     elements.append(Paragraph("DataSynthesis v1.1", styles["DSNormal"]))
     elements.append(PageBreak())
 
-    # ---------- Index ----------
+    # Index
     index_rows = []
     page_no = 1
     index_rows.append([str(page_no), "Cover"]); page_no += 1
@@ -185,7 +177,6 @@ def export_report_to_pdf(
     for assess in all_tables.keys():
         index_rows.append([str(page_no), f"{assess} – Chart"]); page_no += 1
         index_rows.append([str(page_no), f"{assess} – Table"]); page_no += 1
-
     idx_table = Table([["Page", "Description"]] + index_rows, hAlign="CENTER", colWidths=[60, 540])
     idx_table.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
@@ -201,8 +192,8 @@ def export_report_to_pdf(
     elements.append(idx_table)
     elements.append(PageBreak())
 
-    # ---------- Helpers ----------
-    def _merge_stats_for_pdf(df: pd.DataFrame) -> pd.DataFrame:
+    # Helpers
+    def _merge_stats_for_pdf(df):
         df = df.copy()
         cols = list(df.columns)
         pairs = {}
@@ -222,12 +213,12 @@ def export_report_to_pdf(
         df = df.drop(columns=list(pairs.values()), errors="ignore")
         return df
 
-    def _first_col_width(df: pd.DataFrame) -> float:
+    def _first_col_width(df):
         texts = [str(df.columns[0])] + [str(x) for x in df.iloc[:, 0].tolist()]
         width_pts = max(stringWidth(t, "Helvetica", 8) for t in texts) + 18
         return max(140, min(width_pts, 320))
 
-    # ---------- Content ----------
+    # Content
     for assess, table in all_tables.items():
         # Chart page
         elements.append(Paragraph(f"{assess} Chart", styles["DSHeading2"]))
@@ -236,14 +227,14 @@ def export_report_to_pdf(
             try:
                 fig = go.Figure(all_figs[assess])
                 fig.update_layout(
-                    margin=dict(l=90, r=50, t=70, b=150),
-                    legend=dict(
-                        orientation="h", y=-0.15, yanchor="top", x=0.5, xanchor="center",
-                        font=dict(size=8)
-                    ),
+                    margin=dict(l=90, r=50, t=70, b=120),
+                    showlegend=False,  # remove legend from chart
                     font=dict(size=15),
                     template="plotly"
                 )
+                fig.update_xaxes(tickangle=90, tickfont=dict(size=9, color="#004754"))
+                fig.update_yaxes(tickfont=dict(size=9, color="#004754"))
+
                 if fig.layout.annotations:
                     updated = []
                     for ann in fig.layout.annotations:
@@ -265,10 +256,20 @@ def export_report_to_pdf(
                 chart_table = Table([[chart_img]], colWidths=[720], hAlign="CENTER")
                 chart_table.setStyle(TableStyle([
                     ("BOX", (0, 0), (-1, -1), 2, ACCENT),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ]))
                 elements.append(chart_table)
+
+                # Legend as separate table
+                if fig.data:
+                    legend_labels = [tr.name for tr in fig.data if tr.name]
+                    legend_table = Table([legend_labels], hAlign="CENTER")
+                    legend_table.setStyle(TableStyle([
+                        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ]))
+                    elements.append(legend_table)
+
                 elements.append(PageBreak())
             except Exception as e:
                 elements.append(Paragraph(f"(Chart error: {e})", styles["DSNormal"]))
@@ -279,8 +280,6 @@ def export_report_to_pdf(
         df = _merge_stats_for_pdf(table)
         data = [df.columns.tolist()] + df.astype(str).values.tolist()
         first_w = _first_col_width(df)
-
-        # widths: first col auto, stats cols = 25, numeric cols = 45
         col_widths = []
         for c in df.columns:
             if c == df.columns[0]:
@@ -289,7 +288,6 @@ def export_report_to_pdf(
                 col_widths.append(25)
             else:
                 col_widths.append(45)
-
         pdf_table = Table(data, hAlign="CENTER", colWidths=col_widths)
         table_style = [
             ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
@@ -326,20 +324,18 @@ def export_report_to_pdf(
         c.setFillColor(DARK)
         page_num = c.getPageNumber()
         footer_text = f"DataSynthesis v1.1 – Page {page_num}"
-        # logo above
         if logo_path_inner and os.path.exists(logo_path_inner):
             try:
-                logo_w, logo_h = 70, 28
+                logo_w, logo_h = 110, 45
                 c.drawImage(
                     logo_path_inner,
-                    width - 50 - logo_w,
-                    40,   # higher than footer
+                    width - 180, 42,
                     width=logo_w, height=logo_h,
                     preserveAspectRatio=True, mask="auto"
                 )
             except Exception:
                 pass
-        c.drawRightString(width - 50, 27, footer_text)
+        c.drawRightString(width - 50, 32, footer_text)
 
     doc.build(elements,
               onFirstPage=lambda c, d: _footer(c, d, logo_path),
@@ -350,12 +346,7 @@ def export_report_to_pdf(
 # =========================================
 # SIDEBAR EXPORT BUTTONS
 # =========================================
-def export_buttons(
-    all_tables: dict[str, pd.DataFrame],
-    all_figs: dict[str, go.Figure],
-    logo_path: str = "DataSynthesis logo.png",
-    significance_label: str | None = None
-):
+def export_buttons(all_tables, all_figs, logo_path="DataSynthesis logo.png", significance_label=None):
     with st.sidebar:
         st.subheader("Exports")
 
@@ -367,11 +358,7 @@ def export_buttons(
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        pdf_buffer = export_report_to_pdf(
-            all_tables, all_figs,
-            logo_path=logo_path,
-            significance_label=significance_label
-        )
+        pdf_buffer = export_report_to_pdf(all_tables, all_figs, logo_path=logo_path, significance_label=significance_label)
         st.download_button(
             "⬇️ Download PDF",
             data=pdf_buffer.getvalue(),
