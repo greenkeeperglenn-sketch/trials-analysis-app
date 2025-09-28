@@ -8,7 +8,7 @@ import numpy as np
 import streamlit as st
 
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Image, Spacer, PageBreak
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Image, Spacer, PageBreak, KeepTogether
 )
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
@@ -76,8 +76,7 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
                 base = _detect_stat_base(c, cols)
                 if base:
                     continue
-                ordered.append(c)
-                used.add(c)
+                ordered.append(c); used.add(c)
                 s_candidates = [sc for sc in cols if _detect_stat_base(sc, cols) == c]
                 if s_candidates:
                     s_col = s_candidates[0]
@@ -85,14 +84,14 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
                     if col_series.replace("nan", "").str.strip().eq("").all():
                         df = df.drop(columns=[s_col])
                         continue
-                    ordered.append(s_col)
-                    used.add(s_col)
+                    ordered.append(s_col); used.add(s_col)
+
             for c in cols:
                 if c not in used:
-                    ordered.append(c)
-                    used.add(c)
+                    ordered.append(c); used.add(c)
 
             df = df.reindex(columns=ordered)
+
             sheet_name = str(assess)[:30] if assess else "Sheet1"
             df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=2)
             workbook  = writer.book
@@ -160,7 +159,7 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
 
     # Cover
     if logo_path and os.path.exists(logo_path):
-        elements.append(Image(logo_path, width=320, height=180))  # bigger logo
+        elements.append(Image(logo_path, width=320, height=180))  # larger logo
     elements.append(Spacer(1, 50))
     elements.append(Paragraph("Trial Assessment Report 2025", styles["DSHeading1"]))
     if significance_label:
@@ -220,21 +219,40 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
 
     # Content
     for assess, table in all_tables.items():
-        # Chart page
-        elements.append(Paragraph(f"{assess} Chart", styles["DSHeading2"]))
+        # ------- Chart page (heading + chart kept together to avoid blank heading pages)
         if all_figs and assess in all_figs:
-            fig_bytes = BytesIO()
             try:
-                fig = go.Figure(all_figs[assess])
+                orig = all_figs[assess]
+                fig = go.Figure(orig)  # clone
+
+                # Preserve y-range from the original chart if present
+                try:
+                    y_rng = getattr(getattr(orig.layout, "yaxis", None), "range", None)
+                except Exception:
+                    y_rng = None
+                if y_rng is not None:
+                    fig.update_yaxes(range=list(y_rng), autorange=False)
+
+                # Layout: legend inside chart, space reserved below, rotated x labels, small ticks
                 fig.update_layout(
-                    margin=dict(l=90, r=50, t=70, b=120),
-                    showlegend=False,  # remove legend from chart
+                    margin=dict(l=90, r=50, t=70, b=220),   # reserve space for legend
+                    showlegend=True,
+                    legend=dict(
+                        orientation="h",
+                        y=-0.22, yanchor="top",
+                        x=0.5, xanchor="center",
+                        font=dict(size=8),
+                        bgcolor="rgba(255,255,255,0.85)",
+                        bordercolor="#0B6580",
+                        borderwidth=0.5,
+                    ),
                     font=dict(size=15),
-                    template="plotly"
+                    template="plotly",
                 )
                 fig.update_xaxes(tickangle=90, tickfont=dict(size=9, color="#004754"))
                 fig.update_yaxes(tickfont=dict(size=9, color="#004754"))
 
+                # Make annotation letters bigger & tidy "Date" label if present
                 if fig.layout.annotations:
                     updated = []
                     for ann in fig.layout.annotations:
@@ -245,41 +263,39 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
                             font=dict(size=max(getattr(ann.font, "size", 12), 22), color="black"),
                             bgcolor="rgba(255,255,255,0.9)",
                             bordercolor="#0B6580",
-                            yshift=12
+                            yshift=12,
                         )
                         updated.append(ann)
                     fig.update_layout(annotations=updated)
 
+                # Render image
+                fig_bytes = BytesIO()
                 fig.write_image(fig_bytes, format="png", scale=2)
                 fig_bytes.seek(0)
-                chart_img = Image(fig_bytes, width=720, height=420)
+                chart_img = Image(fig_bytes, width=720, height=400)
+
+                # Keep heading + chart together to prevent blank pages
+                chart_heading = Paragraph(f"{assess} Chart", styles["DSHeading2"])
                 chart_table = Table([[chart_img]], colWidths=[720], hAlign="CENTER")
                 chart_table.setStyle(TableStyle([
                     ("BOX", (0, 0), (-1, -1), 2, ACCENT),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ]))
-                elements.append(chart_table)
+                elements.append(KeepTogether([chart_heading, chart_table]))
+                elements.append(PageBreak())  # move to the table page next
 
-                # Legend as separate table
-                if fig.data:
-                    legend_labels = [tr.name for tr in fig.data if tr.name]
-                    legend_table = Table([legend_labels], hAlign="CENTER")
-                    legend_table.setStyle(TableStyle([
-                        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-                        ("FONTSIZE", (0, 0), (-1, -1), 8),
-                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ]))
-                    elements.append(legend_table)
-
-                elements.append(PageBreak())
             except Exception as e:
                 elements.append(Paragraph(f"(Chart error: {e})", styles["DSNormal"]))
                 elements.append(PageBreak())
 
-        # Table page
+        # ------- Table page
         elements.append(Paragraph(f"{assess} Table", styles["DSHeading2"]))
         df = _merge_stats_for_pdf(table)
         data = [df.columns.tolist()] + df.astype(str).values.tolist()
         first_w = _first_col_width(df)
+
+        # widths: first col auto, stats cols = 25, numeric cols = 45
         col_widths = []
         for c in df.columns:
             if c == df.columns[0]:
@@ -288,6 +304,7 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
                 col_widths.append(25)
             else:
                 col_widths.append(45)
+
         pdf_table = Table(data, hAlign="CENTER", colWidths=col_widths)
         table_style = [
             ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
@@ -326,10 +343,10 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
         footer_text = f"DataSynthesis v1.1 – Page {page_num}"
         if logo_path_inner and os.path.exists(logo_path_inner):
             try:
-                logo_w, logo_h = 110, 45
+                logo_w, logo_h = 130, 53  # bigger and a bit taller
                 c.drawImage(
                     logo_path_inner,
-                    width - 180, 42,
+                    width - 200, 44,   # nudge left & up
                     width=logo_w, height=logo_h,
                     preserveAspectRatio=True, mask="auto"
                 )
