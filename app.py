@@ -16,7 +16,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---- Brand CSS (reverted scrolling header, stronger widget overrides) ----
+# ---- Brand CSS ----
 st.markdown(
     """
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
@@ -30,48 +30,88 @@ st.markdown(
     section[data-testid="stSidebar"]{ background-color:var(--dark); }
     section[data-testid="stSidebar"] *{ color:white !important; }
 
-    /* Buttons + Download buttons (black text on white; teal hover -> white text) */
-    .stButton>button, .stDownloadButton>button{
-      background:#fff !important; color:#000 !important;
-      border:1px solid var(--accent) !important; border-radius:6px;
-      font-weight:600; padding:.5em 1em;
+    /* Buttons + Download buttons (black text on white; teal hover → white text) */
+    .stButton>button, .stDownloadButton>button {
+      background:#fff !important;
+      color:#000 !important;
+      border:1px solid var(--accent) !important;
+      border-radius:6px;
+      font-weight:600;
+      padding:.5em 1em;
     }
-    .stButton>button:hover, .stDownloadButton>button:hover{
-      background:var(--accent) !important; color:#fff !important;
+    .stButton>button:hover, .stDownloadButton>button:hover {
+      background:var(--accent) !important;
+      color:#fff !important;
     }
-    .stButton>button:active, .stDownloadButton>button:active{
-      background:var(--primary) !important; color:#fff !important; border-color:var(--primary) !important;
+    .stButton>button:active, .stDownloadButton>button:active {
+      background:var(--primary) !important;
+      color:#fff !important;
+      border-color:var(--primary) !important;
     }
 
     /* Inputs & uploader: white boxes, BLACK text */
-    div[data-testid="stFileUploader"], div[data-baseweb="input"], div[data-baseweb="select"]{
-      background:#fff !important; color:#000 !important; border:1px solid var(--accent); border-radius:6px;
+    div[data-testid="stFileUploader"],
+    div[data-baseweb="input"],
+    div[data-baseweb="select"] {
+      background:#fff !important;
+      color:#000 !important;
+      border:1px solid var(--accent);
+      border-radius:6px;
     }
     input, textarea, select { color:#000 !important; }
-    .stTextInput input, .stNumberInput input, .stTextArea textarea{ color:#000 !important; background:#fff !important; }
-    /* dropdown options */
-    div[data-baseweb="popover"] *{ color:#000 !important; }
+    .stTextInput input, .stNumberInput input, .stTextArea textarea {
+      color:#000 !important;
+      background:#fff !important;
+    }
 
-    /* Kill Streamlit red: radios, checkboxes, switches, sliders -> accent teal */
+    /* Dropdown options */
+    div[data-baseweb="popover"] * {
+      color:#000 !important;
+    }
+
+    /* Kill Streamlit red: radios, checkboxes, switches, sliders → accent teal */
+
     /* Radio */
-    [data-baseweb="radio"] svg{ color:var(--accent) !important; fill:var(--accent) !important; }
-    [data-baseweb="radio"] div[role="radio"]{ border-color:var(--accent) !important; }
-    [data-baseweb="radio"] div[role="radio"][aria-checked="true"]{
-      background:var(--accent) !important; border-color:var(--accent) !important;
+    [data-baseweb="radio"] svg {
+      color:var(--accent) !important;
+      fill:var(--accent) !important;
     }
+    [data-baseweb="radio"] div[role="radio"] {
+      border-color:var(--accent) !important;
+    }
+    [data-baseweb="radio"] div[role="radio"][aria-checked="true"] {
+      background:var(--accent) !important;
+      border-color:var(--accent) !important;
+    }
+
     /* Checkbox */
-    div[role="checkbox"]{ border-color:var(--accent) !important; }
-    div[role="checkbox"][aria-checked="true"]{
-      background:var(--accent) !important; border-color:var(--accent) !important;
+    div[role="checkbox"] {
+      border-color:var(--accent) !important;
     }
+    div[role="checkbox"][aria-checked="true"] {
+      background:var(--accent) !important;
+      border-color:var(--accent) !important;
+    }
+
     /* Switch */
-    div[role="switch"]{ border-color:var(--accent) !important; }
-    div[role="switch"][aria-checked="true"]{ background:var(--accent) !important; }
+    div[role="switch"] {
+      border-color:var(--accent) !important;
+    }
+    div[role="switch"][aria-checked="true"] {
+      background:var(--accent) !important;
+    }
+
     /* Slider (BaseWeb) */
-    [data-baseweb="slider"] [aria-valuenow]{ background:var(--accent) !important; border-color:var(--accent) !important; }
+    [data-baseweb="slider"] [aria-valuenow] {
+      background:var(--accent) !important;
+      border-color:var(--accent) !important;
+    }
 
     /* Headings */
-    h1,h2,h3,h4{ color:#40B5AB; font-weight:600; }
+    h1,h2,h3,h4 {
+      color:#40B5AB;
+      font-weight:600;
+    }
     </style>
     """,
     unsafe_allow_html=True
@@ -121,7 +161,6 @@ if data is not None:
         sorted(set(data["Assessment"].unique()))
     )
 
-    # (You can swap this for charts.make_color_map(treatments) if you prefer brand palette)
     color_map = {t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
                  for i, t in enumerate(treatments)}
 
