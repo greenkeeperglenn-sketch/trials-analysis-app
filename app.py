@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -11,16 +9,14 @@ import data_loader
 import helpers
 import exports  # <-- our exports.py
 
-# =========================================
-# Page config + STRI branding
-# =========================================
+# Page config
 st.set_page_config(
     page_title="DataSynthesis by STRI",
     page_icon="🧪",
     layout="wide"
 )
 
-# Inject Montserrat font + STRI colour scheme
+# Inject Montserrat font + STRI colour scheme + fixes
 st.markdown(
     """
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
@@ -29,7 +25,6 @@ st.markdown(
     html, body, [class*="css"] {
         font-family: 'Montserrat', sans-serif;
     }
-
     :root {
         --primary: #0B6580;
         --secondary: #59B37D;
@@ -39,10 +34,12 @@ st.markdown(
 
     .stApp { background-color: #ffffff; }
 
-    /* Sidebar background + white text */
+    /* Sidebar background */
     section[data-testid="stSidebar"] {
         background-color: var(--dark);
     }
+
+    /* Sidebar text readable */
     section[data-testid="stSidebar"] * {
         color: white !important;
     }
@@ -60,10 +57,27 @@ st.markdown(
         background-color: var(--primary);
         color: white;
     }
-    .stButton>button:active {
-        background-color: var(--accent) !important;
-        color: white !important;
-        border: none !important;
+
+    /* Inputs & uploader */
+    div[data-testid="stFileUploader"],
+    div[data-baseweb="input"],
+    div[data-baseweb="select"] {
+        background-color: #E6F7F9 !important;
+        color: black !important;
+        border-radius: 6px;
+    }
+
+    /* Dropdown options */
+    div[data-baseweb="popover"] * {
+        color: black !important;
+    }
+
+    /* Replace Streamlit red (radio, toggles, sliders) */
+    [data-baseweb="radio"] div[role="radio"][aria-checked="true"],
+    .stCheckbox input:checked + div,
+    .stSwitch [data-checked="true"] {
+        background-color: #40B5AB !important;
+        border-color: #40B5AB !important;
     }
 
     /* Headers */
@@ -71,46 +85,18 @@ st.markdown(
         color: var(--accent);
         font-weight: 600;
     }
-
-    /* Regular text */
-    p, span, div {
-        color: #262730;
-    }
-
-    /* Input fields + uploader */
-    div[data-baseweb="input"] > div {
-        background-color: #E6F4F3 !important;
-        border-radius: 6px;
-    }
-    div[data-testid="stFileUploaderDropzone"] {
-        background-color: #E6F4F3 !important;
-        border-radius: 6px;
-    }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# =========================================
-# Top logo (sticky, centered, large)
-# =========================================
+# --- Top logo + version ---
 st.markdown(
     """
-    <div style="text-align:center; position:sticky; top:0; z-index:1000; background:#fff; padding:10px;">
-        <img src="DataSynthesis logo.png" width="400">
-        <div style="font-size:16px; color:#004754;">DataSynthesis v1.1</div>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
-# =========================================
-# Sidebar logo (smaller)
-# =========================================
-st.sidebar.markdown(
-    """
-    <div style="text-align:center; padding:10px;">
-        <img src="DataSynthesis logo.png" width="160">
+    <div style="text-align:center;">
+        <img src="https://raw.githubusercontent.com/greenkeeperglenn-sketch/trials-analysis-app/experiment-5/DataSynthesis%20logo.png" 
+             alt="DataSynthesis Logo" width="420">
+        <div style="font-size:16px; font-weight:600; color:#004754;">Version 1.1</div>
     </div>
     """,
     unsafe_allow_html=True
@@ -119,6 +105,10 @@ st.sidebar.markdown(
 # ----------------------
 # Sidebar global settings
 # ----------------------
+st.sidebar.image(
+    "https://raw.githubusercontent.com/greenkeeperglenn-sketch/trials-analysis-app/experiment-5/DataSynthesis%20logo.png",
+    width=180
+)
 st.sidebar.header("Global Settings")
 alpha_options = {
     "Fungicide (0.05)": 0.05,
@@ -150,9 +140,6 @@ if data is not None:
         for i, t in enumerate(treatments)
     }
 
-    # ----------------------
-    # Loop through assessments
-    # ----------------------
     for assess in selected_assessments:
         with st.expander(f"Assessment: {assess}", expanded=False):
             st.markdown(
@@ -160,9 +147,7 @@ if data is not None:
                 unsafe_allow_html=True
             )
 
-            # ----------------------
             # Chart Settings
-            # ----------------------
             with st.expander("Chart Settings", expanded=True):
                 chart_mode = st.radio(
                     "Chart type",
@@ -180,7 +165,6 @@ if data is not None:
                     key=helpers.safe_key("letters", assess)
                 ) == "Lowest = A"
 
-                # Bar chart toggles
                 add_se = add_lsd = add_letters = False
                 if chart_mode == "Bar chart":
                     add_se = st.checkbox("Add SE error bars", value=True,
@@ -190,15 +174,12 @@ if data is not None:
                     add_letters = st.checkbox("Add statistical letters", value=True,
                                               key=helpers.safe_key("letters_check", assess))
 
-                # Axis range
                 y_min = st.number_input("Y-axis minimum", value=0, step=1,
                                         key=helpers.safe_key("ymin", assess))
                 y_max = st.number_input("Y-axis maximum", value=100, step=1,
                                         key=helpers.safe_key("ymax", assess))
 
-            # ----------------------
             # Treatment filter
-            # ----------------------
             visible_treatments = st.multiselect(
                 "Show treatments",
                 options=treatments,
@@ -206,7 +187,6 @@ if data is not None:
                 key=helpers.safe_key("visible_treatments", assess),
             )
 
-            # Prepare data
             df_sub = data[data["Assessment"] == assess].copy()
             df_sub["Value"] = pd.to_numeric(df_sub["Value"], errors="coerce")
             df_sub = df_sub.dropna(subset=["Value"])
@@ -216,9 +196,7 @@ if data is not None:
                 ordered=True,
             )
 
-            # ----------------------
             # Chart
-            # ----------------------
             with st.expander("Chart", expanded=True):
                 if chart_mode == "Boxplot":
                     fig = charts.make_boxplot(
@@ -233,26 +211,20 @@ if data is not None:
                         color_map, add_se, add_lsd, add_letters
                     )
 
-                # Apply axis limits & height
                 fig.update_yaxes(range=[y_min, y_max])
                 fig.update_layout(height=500)
 
                 st.plotly_chart(fig, use_container_width=True,
                                 config={"displayModeBar": True})
-
-                # Save fig for export
                 all_figs[assess] = fig
 
-            # ----------------------
-            # Statistics Table
-            # ----------------------
+            # Stats Table
             with st.expander("Statistics Table", expanded=False):
                 df_stats = df_sub[df_sub["Treatment"].isin(visible_treatments)].copy()
                 wide_table, styled_table = stats.build_stats_table(
                     df_stats, visible_treatments, date_labels_ordered,
                     alpha_choice, a_is_lowest_chart
                 )
-
                 st.dataframe(
                     styled_table,
                     use_container_width=True,
@@ -262,12 +234,9 @@ if data is not None:
                         "Treatment": st.column_config.Column("Treatment", pinned=True)
                     }
                 )
-
                 all_tables[assess] = wide_table
 
-# ----------------------
 # Global Exports
-# ----------------------
 if all_tables:
     exports.export_buttons(
         all_tables,
