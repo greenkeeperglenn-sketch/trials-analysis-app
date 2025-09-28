@@ -1,3 +1,5 @@
+# app.py
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -7,10 +9,16 @@ import charts
 import stats
 import data_loader
 import helpers
-import exports  # <-- our exports.py
+import exports  # <-- updated exports.py
 
+# ----------------------
+# Page config & branding
+# ----------------------
 st.set_page_config(layout="wide")
-st.title("Assessment Data Explorer")
+
+# Replace old title with logo + version text
+st.image("DataSynthesis LOGO.png", width=300)
+st.markdown("<h3 style='text-align:center;'>Version 1.1</h3>", unsafe_allow_html=True)
 
 # ----------------------
 # Sidebar global settings
@@ -27,8 +35,8 @@ alpha_choice = alpha_options[alpha_label]
 # ----------------------
 # Prepare containers
 # ----------------------
-all_tables = {}  # always exists
-all_figs = {}    # always exists
+all_tables = {}  # assessment → DataFrame
+all_figs = {}    # assessment → Plotly Figure
 
 # ----------------------
 # Load data
@@ -169,5 +177,6 @@ if all_tables:  # only show if something to export
     exports.export_buttons(
         all_tables,
         all_figs,
-        logo_path="download.jpg"   # your logo in repo root
+        logo_path="DataSynthesis LOGO.png",
+        significance_label=alpha_label
     )
