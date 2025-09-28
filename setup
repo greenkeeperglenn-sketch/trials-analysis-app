@@ -1,0 +1,84 @@
+import streamlit as st
+
+# Page config
+st.set_page_config(
+    page_title="DataSynthesis by STRI",
+    page_icon="🧪",
+    layout="wide"
+)
+
+# Inject Montserrat font + STRI colour scheme
+st.markdown(
+    """
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
+
+    <style>
+    /* Apply Montserrat font globally */
+    html, body, [class*="css"] {
+        font-family: 'Montserrat', sans-serif;
+    }
+
+    /* STRI Color Palette */
+    :root {
+        --primary: #0B6580;
+        --secondary: #59B37D;
+        --accent: #40B5AB;
+        --dark: #004754;
+    }
+
+    /* Backgrounds */
+    .stApp {
+        background-color: #ffffff;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: var(--dark);
+    }
+
+    /* Buttons */
+    .stButton>button {
+        background-color: var(--secondary);
+        color: white;
+        border-radius: 6px;
+        font-weight: 600;
+        padding: 0.5em 1em;
+        border: none;
+    }
+    .stButton>button:hover {
+        background-color: var(--primary);
+        color: white;
+    }
+
+    /* Headers */
+    h1, h2, h3, h4 {
+        color: var(--accent);
+        font-weight: 600;
+    }
+
+    /* Regular text */
+    p, span, div {
+        color: #262730;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- Demo content ---
+st.title("DataSynthesis by STRI")
+st.subheader("Custom Streamlit Styling Demo")
+
+st.write("This app uses Montserrat font and STRI’s brand colours.")
+
+if st.button("Run Analysis"):
+    st.success("Analysis started... 🚀")
+
+col1, col2 = st.columns(2)
+with col1:
+    st.header("Primary Colour Example")
+    st.markdown('<div style="background-color:#0B6580; padding:20px; border-radius:8px; color:white;">Primary</div>', unsafe_allow_html=True)
+
+with col2:
+    st.header("Secondary Colour Example")
+    st.markdown('<div style="background-color:#59B37D; padding:20px; border-radius:8px; color:white;">Secondary</div>', unsafe_allow_html=True)
