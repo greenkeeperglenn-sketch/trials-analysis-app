@@ -8,8 +8,13 @@ from statsmodels.formula.api import ols
 from helpers import generate_cld_overlap
 
 
-def make_boxplot(df_sub, treatments, date_labels_ordered, view_mode_chart, visible_treatments, color_map):
-    """Generate a boxplot grouped by Date or Treatment."""
+# =========================================
+# BOX PLOT
+# =========================================
+def make_boxplot(df_sub, treatments, date_labels_ordered,
+                 view_mode_chart, visible_treatments, color_map):
+    """Generate a boxplot grouped by Date or Treatment with brand colours."""
+
     df_plot = df_sub[df_sub["Treatment"].isin(visible_treatments)].copy()
 
     if view_mode_chart == "By Date":
@@ -17,7 +22,7 @@ def make_boxplot(df_sub, treatments, date_labels_ordered, view_mode_chart, visib
             df_plot,
             x="DateLabel", y="Value",
             color="Treatment",
-            color_discrete_map=color_map,
+            color_discrete_map=color_map,   # ✅ brand colours
             category_orders={"DateLabel": date_labels_ordered, "Treatment": treatments}
         )
     else:  # By Treatment
@@ -25,19 +30,32 @@ def make_boxplot(df_sub, treatments, date_labels_ordered, view_mode_chart, visib
             df_plot,
             x="Treatment", y="Value",
             color="DateLabel",
+            color_discrete_map=color_map,   # ✅ brand colours
             category_orders={"Treatment": treatments, "DateLabel": date_labels_ordered}
         )
-        fig.update_layout(boxmode="group")  # ✅ prevents overlapping when grouped
+        fig.update_layout(boxmode="group")
 
-    fig.update_traces(boxpoints=False)
+    # Styling
+    fig.update_traces(boxpoints=False, marker=dict(line=dict(width=1, color="black")))
+    fig.update_layout(
+        template="plotly",
+        legend=dict(
+            orientation="h", y=-0.25, x=0.5, xanchor="center",
+            font=dict(size=8)   # ✅ smaller legend font
+        ),
+        font=dict(size=12)
+    )
     return fig
 
 
+# =========================================
+# BAR CHART
+# =========================================
 def make_barchart(df_sub, treatments, date_labels_ordered,
                   view_mode_chart, visible_treatments,
                   alpha_choice, a_is_lowest_chart,
                   color_map, add_se, add_lsd, add_letters):
-    """Generate a bar chart with optional SE, LSD, and letters."""
+    """Generate a bar chart with optional SE, LSD, and statistical letters."""
 
     df_plot = df_sub[df_sub["Treatment"].isin(visible_treatments)].copy()
 
@@ -66,7 +84,6 @@ def make_barchart(df_sub, treatments, date_labels_ordered,
 
                 rep_counts_date = df_date["Treatment"].value_counts().to_dict()
 
-                # ✅ Only generate letters if significant
                 if pd.notna(p_val) and p_val <= alpha_choice:
                     means_date = df_date.groupby("Treatment")["Value"].mean()
                     letters, _ = generate_cld_overlap(
@@ -75,10 +92,8 @@ def make_barchart(df_sub, treatments, date_labels_ordered,
                     )
                     letters_dict[date_label] = letters
                 else:
-                    # No significance → no letters
                     letters_dict[date_label] = {t: "" for t in df_date["Treatment"].unique()}
 
-                # LSD if requested
                 if add_lsd and pd.notna(mse):
                     n_avg = np.mean(list(rep_counts_date.values()))
                     lsd_val = stats.t.ppf(1 - alpha_choice/2, df_error) * np.sqrt(2*mse/n_avg)
@@ -112,7 +127,7 @@ def make_barchart(df_sub, treatments, date_labels_ordered,
                 error_y=error_y,
                 text=[letters_dict.get(d, {}).get(t, "") if add_letters else "" for d in df_t["DateLabel"]],
                 textposition="outside",
-                textfont=dict(color="black", size=12)
+                textfont=dict(color="black", size=14)  # ✅ bumped up font
             ))
 
     else:  # By Treatment
@@ -131,11 +146,21 @@ def make_barchart(df_sub, treatments, date_labels_ordered,
                 x=df_d["Treatment"],
                 y=df_d["Value"],
                 name=d,
+                marker_color=color_map.get(d, None),
                 error_y=error_y,
                 text=[letters_dict.get(d, {}).get(t, "") if add_letters else "" for t in df_d["Treatment"]],
                 textposition="outside",
-                textfont=dict(color="black", size=12)
+                textfont=dict(color="black", size=14)  # ✅ bumped up font
             ))
 
-    fig.update_layout(barmode="group")
+    # Layout
+    fig.update_layout(
+        barmode="group",
+        template="plotly",
+        legend=dict(
+            orientation="h", y=-0.25, x=0.5, xanchor="center",
+            font=dict(size=8)   # ✅ smaller legend font
+        ),
+        font=dict(size=12)
+    )
     return fig
