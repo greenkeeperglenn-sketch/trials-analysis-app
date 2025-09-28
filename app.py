@@ -32,52 +32,65 @@ st.markdown(
         --dark: #004754;
     }
 
-    .stApp { background-color: #ffffff; }
-
-    /* Sidebar background */
+    /* Sidebar background + text */
     section[data-testid="stSidebar"] {
         background-color: var(--dark);
     }
-
-    /* Sidebar text readable */
     section[data-testid="stSidebar"] * {
         color: white !important;
     }
 
-    /* Buttons */
-    .stButton>button {
-        background-color: var(--secondary);
-        color: white;
+    /* Fixed header logo */
+    .fixed-logo {
+        position: fixed;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 999;
+        background-color: #fff;
+        padding: 8px 0;
+        width: 100%;
+        text-align: center;
+        border-bottom: 2px solid var(--accent);
+    }
+    .stApp {
+        margin-top: 200px; /* pushes content down so logo doesn't overlap */
+    }
+
+    /* Buttons + Export buttons */
+    .stButton>button, .stDownloadButton>button {
+        background-color: white !important;
+        color: black !important;
+        border: 1px solid var(--accent) !important;
         border-radius: 6px;
         font-weight: 600;
         padding: 0.5em 1em;
-        border: none;
     }
-    .stButton>button:hover {
-        background-color: var(--primary);
-        color: white;
+    .stButton>button:hover, .stDownloadButton>button:hover {
+        background-color: var(--accent) !important;
+        color: white !important;
     }
 
     /* Inputs & uploader */
     div[data-testid="stFileUploader"],
     div[data-baseweb="input"],
     div[data-baseweb="select"] {
-        background-color: #E6F7F9 !important;
+        background-color: #ffffff !important;
         color: black !important;
         border-radius: 6px;
+        border: 1px solid var(--accent);
     }
-
-    /* Dropdown options */
     div[data-baseweb="popover"] * {
         color: black !important;
     }
 
-    /* Replace Streamlit red (radio, toggles, sliders) */
+    /* Replace Streamlit red (radio, toggles, sliders, switches) */
     [data-baseweb="radio"] div[role="radio"][aria-checked="true"],
     .stCheckbox input:checked + div,
-    .stSwitch [data-checked="true"] {
-        background-color: #40B5AB !important;
-        border-color: #40B5AB !important;
+    .stSwitch [data-checked="true"],
+    [data-baseweb="slider"] [aria-valuenow] {
+        background-color: var(--accent) !important;
+        border-color: var(--accent) !important;
     }
 
     /* Headers */
@@ -90,13 +103,13 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- Top logo + version ---
+# --- Top logo + version (fixed) ---
 st.markdown(
     """
-    <div style="text-align:center;">
+    <div class="fixed-logo">
         <img src="https://raw.githubusercontent.com/greenkeeperglenn-sketch/trials-analysis-app/experiment-5/DataSynthesis%20logo.png" 
-             alt="DataSynthesis Logo" width="420">
-        <div style="font-size:16px; font-weight:600; color:#004754;">Version 1.1</div>
+             alt="DataSynthesis Logo" width="840">
+        <div style="font-size:20px; font-weight:600; color:#004754;">Version 1.1</div>
     </div>
     """,
     unsafe_allow_html=True
@@ -107,7 +120,7 @@ st.markdown(
 # ----------------------
 st.sidebar.image(
     "https://raw.githubusercontent.com/greenkeeperglenn-sketch/trials-analysis-app/experiment-5/DataSynthesis%20logo.png",
-    width=180
+    width=160
 )
 st.sidebar.header("Global Settings")
 alpha_options = {
