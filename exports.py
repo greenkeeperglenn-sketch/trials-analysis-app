@@ -32,10 +32,9 @@ DARK      = colors.HexColor("#004754")   # axis text, footer text
 # Helpers (shared)
 # =========================================
 def _is_number(x):
-    return isinstance(x, (int, float, np.integer, np.floating)) and pd.notna(x)
+    return isinstance(x, (int, float, np.integer, np.floating, np.number)) and pd.notna(x)
 
 def _detect_stat_base(col_name: str, existing_cols: list[str]) -> str | None:
-    """Detect if col_name is a stats letter column and return its base column name if so."""
     if col_name.endswith(" S"):
         base = col_name[:-2]
     elif col_name.endswith("_S"):
@@ -50,42 +49,29 @@ def _detect_stat_base(col_name: str, existing_cols: list[str]) -> str | None:
         base = None
     return base if base in existing_cols else None
 
-def _autofit_widths_xlsxwriter(df: pd.DataFrame, min_width=8, max_width=50):
-    """Estimate Excel column widths from content length."""
-    widths = []
+def _set_fixed_widths_xlsxwriter(df, worksheet):
+    """Set fixed column widths for Excel."""
     for j, col in enumerate(df.columns):
-        max_len = len(str(col))
-        for val in df[col].astype(str).tolist():
-            if len(val) > max_len:
-                max_len = len(val)
-        w = min(max_width, max(min_width, int(max_len * 1.15)))
-        widths.append(w)
-    return widths
+        if j == 0:
+            worksheet.set_column(j, j, 20)   # Treatment names
+        elif col.endswith("S") or col.endswith("_S") or "(S)" in col:
+            worksheet.set_column(j, j, 4)    # stats letters
+        else:
+            worksheet.set_column(j, j, 10)   # numbers (LSD row defines width)
 
 
 # =========================================
 # EXCEL EXPORT
 # =========================================
 def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) -> BytesIO:
-    """
-    Return a BytesIO Excel file with DataSynthesis branding.
-    - No logo
-    - Numbers written as numbers (preserve source precision)
-    - Autofit columns
-    - If a matching '<base> S' column is present:
-        * Drop it if all empty
-        * Otherwise keep it immediately to the right of its base numeric column
-    - Bottom 4 rows shaded secondary green with white text + white borders
-    """
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
         for assess, table in all_tables.items():
             df = table.copy()
             cols = list(df.columns)
-            ordered = []
-            used = set()
+            ordered, used = [], set()
 
-            # Build ordered column list
+            # Build ordered columns
             for c in cols:
                 if c in used:
                     continue
@@ -132,7 +118,7 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
             fmt_special  = workbook.add_format({
                 "bg_color": "#59B37D", "font_color": "white",
                 "align": "center", "valign": "vcenter",
-                "border": 1, "border_color": "white"   # white borders
+                "border": 1, "border_color": "white"
             })
 
             rows, cols_n = df.shape
@@ -152,10 +138,8 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
                     else:
                         worksheet.write(i + 3, j, str(val), fmt)
 
-            # Autofit widths
-            widths = _autofit_widths_xlsxwriter(df)
-            for j, w in enumerate(widths):
-                worksheet.set_column(j, j, w)
+            # Fixed widths
+            _set_fixed_widths_xlsxwriter(df, worksheet)
 
     return buffer
 
@@ -169,7 +153,6 @@ def export_report_to_pdf(
     logo_path: str = "DataSynthesis logo.png",
     significance_label: str | None = None
 ) -> BytesIO:
-    """Return a BytesIO PDF report with DataSynthesis v1.1 branding."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=landscape(A4),
@@ -185,7 +168,7 @@ def export_report_to_pdf(
 
     # ---------- Cover ----------
     if logo_path and os.path.exists(logo_path):
-        elements.append(Image(logo_path, width=280, height=160))  # taller logo
+        elements.append(Image(logo_path, width=280, height=160))
     elements.append(Spacer(1, 50))
     elements.append(Paragraph("Trial Assessment Report 2025", styles["DSHeading1"]))
     if significance_label:
@@ -252,11 +235,12 @@ def export_report_to_pdf(
             fig_bytes = BytesIO()
             try:
                 fig = go.Figure(all_figs[assess])
-                fig.update_xaxes(title_text=None, tickangle=90, tickfont=dict(size=11, color="#004754"))
-                fig.update_yaxes(tickfont=dict(size=12, color="#004754"))
                 fig.update_layout(
-                    margin=dict(l=90, r=50, t=70, b=170),
-                    legend=dict(orientation="h", y=-0.32, x=0.5, xanchor="center", font=dict(size=8)),
+                    margin=dict(l=90, r=50, t=70, b=150),
+                    legend=dict(
+                        orientation="h", y=-0.15, yanchor="top", x=0.5, xanchor="center",
+                        font=dict(size=8)
+                    ),
                     font=dict(size=15),
                     template="plotly"
                 )
@@ -295,7 +279,17 @@ def export_report_to_pdf(
         df = _merge_stats_for_pdf(table)
         data = [df.columns.tolist()] + df.astype(str).values.tolist()
         first_w = _first_col_width(df)
-        col_widths = [first_w] + [45] * (len(df.columns) - 1)
+
+        # widths: first col auto, stats cols = 25, numeric cols = 45
+        col_widths = []
+        for c in df.columns:
+            if c == df.columns[0]:
+                col_widths.append(first_w)
+            elif c.endswith("S") or c.endswith("_S") or "(S)" in c:
+                col_widths.append(25)
+            else:
+                col_widths.append(45)
+
         pdf_table = Table(data, hAlign="CENTER", colWidths=col_widths)
         table_style = [
             ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
@@ -305,7 +299,7 @@ def export_report_to_pdf(
             ("ALIGN", (0, 0), (-1, 0), "CENTER"),
             ("GRID", (0, 0), (-1, -1), 0.5, ACCENT),
             ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-            ("ROTATE", (0, 0), (-1, 0), 90),  # rotate all headers
+            ("ROTATE", (0, 0), (-1, 0), 90),
         ]
         total_rows = len(df)
         for i in range(total_rows):
@@ -332,19 +326,20 @@ def export_report_to_pdf(
         c.setFillColor(DARK)
         page_num = c.getPageNumber()
         footer_text = f"DataSynthesis v1.1 – Page {page_num}"
-        c.drawRightString(width - 50, 27, footer_text)  # shifted up
+        # logo above
         if logo_path_inner and os.path.exists(logo_path_inner):
             try:
                 logo_w, logo_h = 70, 28
                 c.drawImage(
                     logo_path_inner,
                     width - 50 - logo_w,
-                    27 + 6,
+                    40,   # higher than footer
                     width=logo_w, height=logo_h,
                     preserveAspectRatio=True, mask="auto"
                 )
             except Exception:
                 pass
+        c.drawRightString(width - 50, 27, footer_text)
 
     doc.build(elements,
               onFirstPage=lambda c, d: _footer(c, d, logo_path),
