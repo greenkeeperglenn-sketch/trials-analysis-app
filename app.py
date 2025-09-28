@@ -1,5 +1,6 @@
 # app.py
 
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -16,8 +17,12 @@ import exports  # <-- updated exports.py
 # ----------------------
 st.set_page_config(layout="wide")
 
-# Replace old title with logo + version text
-st.image("DataSynthesis LOGO.png", width=300)
+# Resolve logo path safely (works locally & on Streamlit Cloud)
+logo_path = os.path.join(os.path.dirname(__file__), "DataSynthesis logo.png")
+
+# Top branding: logo centered with version underneath
+if os.path.exists(logo_path):
+    st.image(logo_path, width=300)
 st.markdown("<h3 style='text-align:center;'>Version 1.1</h3>", unsafe_allow_html=True)
 
 # ----------------------
@@ -177,6 +182,6 @@ if all_tables:  # only show if something to export
     exports.export_buttons(
         all_tables,
         all_figs,
-        logo_path="DataSynthesis LOGO.png",
+        logo_path=logo_path,  # pass safe path
         significance_label=alpha_label
     )
