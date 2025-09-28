@@ -29,14 +29,25 @@ st.markdown(
     html, body, [class*="css"] {
         font-family: 'Montserrat', sans-serif;
     }
+
     :root {
         --primary: #0B6580;
         --secondary: #59B37D;
         --accent: #40B5AB;
         --dark: #004754;
     }
+
     .stApp { background-color: #ffffff; }
-    section[data-testid="stSidebar"] { background-color: var(--dark); }
+
+    /* Sidebar background + white text */
+    section[data-testid="stSidebar"] {
+        background-color: var(--dark);
+    }
+    section[data-testid="stSidebar"] * {
+        color: white !important;
+    }
+
+    /* Buttons */
     .stButton>button {
         background-color: var(--secondary);
         color: white;
@@ -45,19 +56,65 @@ st.markdown(
         padding: 0.5em 1em;
         border: none;
     }
-    .stButton>button:hover { background-color: var(--primary); color: white; }
-    h1, h2, h3, h4 { color: var(--accent); font-weight: 600; }
-    p, span, div { color: #262730; }
+    .stButton>button:hover {
+        background-color: var(--primary);
+        color: white;
+    }
+    .stButton>button:active {
+        background-color: var(--accent) !important;
+        color: white !important;
+        border: none !important;
+    }
+
+    /* Headers */
+    h1, h2, h3, h4 {
+        color: var(--accent);
+        font-weight: 600;
+    }
+
+    /* Regular text */
+    p, span, div {
+        color: #262730;
+    }
+
+    /* Input fields + uploader */
+    div[data-baseweb="input"] > div {
+        background-color: #E6F4F3 !important;
+        border-radius: 6px;
+    }
+    div[data-testid="stFileUploaderDropzone"] {
+        background-color: #E6F4F3 !important;
+        border-radius: 6px;
+    }
     </style>
     """,
     unsafe_allow_html=True
 )
 
 # =========================================
-# Title / Logo
+# Top logo (sticky, centered, large)
 # =========================================
-st.image("DataSynthesis logo.png", width=300)
-st.markdown("<h4 style='text-align:center; color:#004754;'>DataSynthesis v1.1</h4>", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div style="text-align:center; position:sticky; top:0; z-index:1000; background:#fff; padding:10px;">
+        <img src="DataSynthesis logo.png" width="400">
+        <div style="font-size:16px; color:#004754;">DataSynthesis v1.1</div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# =========================================
+# Sidebar logo (smaller)
+# =========================================
+st.sidebar.markdown(
+    """
+    <div style="text-align:center; padding:10px;">
+        <img src="DataSynthesis logo.png" width="160">
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ----------------------
 # Sidebar global settings
