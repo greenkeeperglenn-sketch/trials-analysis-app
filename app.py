@@ -10,12 +10,16 @@ import charts
 import stats
 import data_loader
 import helpers
-import exports  # <-- updated exports.py
+import exports
+import setup   # <-- STRI styling
 
 # ----------------------
 # Page config & branding
 # ----------------------
 st.set_page_config(layout="wide")
+
+# Apply STRI styling (font + CSS)
+setup.apply_style()
 
 # Resolve logo path safely (works locally & on Streamlit Cloud)
 logo_path = os.path.join(os.path.dirname(__file__), "DataSynthesis logo.png")
@@ -54,8 +58,11 @@ if data is not None:
         sorted(set(data["Assessment"].unique()))
     )
 
+    # STRI colour palette for treatments
+    STRI_COLORS = ["#0B6580", "#59B37D", "#40B5AB", "#004754"]
+
     color_map = {
-        t: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)]
+        t: STRI_COLORS[i % len(STRI_COLORS)]
         for i, t in enumerate(treatments)
     }
 
