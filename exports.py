@@ -143,9 +143,9 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
                     val = df.iat[i, j]
                     fmt = fmt_special if is_bottom_4 else (fmt_num if _is_number(val) else fmt_text)
                     if _is_number(val):
-                        worksheet.write_number(i + 3, j, float(val), fmt)
+                        worksheet.write_number(i + 3, j, float(val), fmt)  # ✅ cast to float
                     else:
-                        worksheet.write(i + 3, j, val, fmt)
+                        worksheet.write(i + 3, j, str(val), fmt)           # ✅ always str
 
             # Autofit widths
             widths = _autofit_widths_xlsxwriter(df)
