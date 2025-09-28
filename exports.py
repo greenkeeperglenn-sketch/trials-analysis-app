@@ -75,7 +75,7 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
     - If a matching '<base> S' column is present:
         * Drop it if all empty
         * Otherwise keep it immediately to the right of its base numeric column
-    - Bottom 4 rows shaded secondary green with white text
+    - Bottom 4 rows shaded secondary green with white text + white borders
     """
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
@@ -98,7 +98,6 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
                 if s_candidates:
                     s_col = s_candidates[0]
                     col_series = df[s_col].astype(str).str.strip().fillna("")
-                    # ✅ FIX: safer check for empty stats column
                     if col_series.replace("nan", "").str.strip().eq("").all():
                         df = df.drop(columns=[s_col])
                         continue
@@ -121,14 +120,20 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
             fmt_header   = workbook.add_format({
                 "bg_color": "#0B6580", "font_color": "white",
                 "bold": True, "border": 1, "align": "center", "valign": "vcenter",
-                "border_color": "#40B5AB"
+                "border_color": "#40B5AB", "rotation": 90
             })
-            fmt_text     = workbook.add_format({"align": "center", "valign": "vcenter",
-                                                "border": 1, "border_color": "#40B5AB"})
-            fmt_num      = workbook.add_format({"border": 1, "border_color": "#40B5AB"})
-            fmt_special  = workbook.add_format({"bg_color": "#59B37D", "font_color": "white",
-                                                "align": "center", "valign": "vcenter",
-                                                "border": 1, "border_color": "#40B5AB"})
+            fmt_text     = workbook.add_format({
+                "align": "center", "valign": "vcenter",
+                "border": 1, "border_color": "#40B5AB"
+            })
+            fmt_num      = workbook.add_format({
+                "border": 1, "border_color": "#40B5AB"
+            })
+            fmt_special  = workbook.add_format({
+                "bg_color": "#59B37D", "font_color": "white",
+                "align": "center", "valign": "vcenter",
+                "border": 1, "border_color": "white"   # white borders
+            })
 
             rows, cols_n = df.shape
 
@@ -143,9 +148,9 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
                     val = df.iat[i, j]
                     fmt = fmt_special if is_bottom_4 else (fmt_num if _is_number(val) else fmt_text)
                     if _is_number(val):
-                        worksheet.write_number(i + 3, j, float(val), fmt)  # ✅ cast to float
+                        worksheet.write_number(i + 3, j, float(val), fmt)
                     else:
-                        worksheet.write(i + 3, j, str(val), fmt)           # ✅ always str
+                        worksheet.write(i + 3, j, str(val), fmt)
 
             # Autofit widths
             widths = _autofit_widths_xlsxwriter(df)
@@ -180,7 +185,7 @@ def export_report_to_pdf(
 
     # ---------- Cover ----------
     if logo_path and os.path.exists(logo_path):
-        elements.append(Image(logo_path, width=320, height=130))
+        elements.append(Image(logo_path, width=280, height=160))  # taller logo
     elements.append(Spacer(1, 50))
     elements.append(Paragraph("Trial Assessment Report 2025", styles["DSHeading1"]))
     if significance_label:
@@ -247,12 +252,12 @@ def export_report_to_pdf(
             fig_bytes = BytesIO()
             try:
                 fig = go.Figure(all_figs[assess])
-                fig.update_xaxes(title_text=None, tickangle=90, tickfont=dict(size=10, color="#004754"))
-                fig.update_yaxes(tickfont=dict(size=11, color="#004754"))
+                fig.update_xaxes(title_text=None, tickangle=90, tickfont=dict(size=11, color="#004754"))
+                fig.update_yaxes(tickfont=dict(size=12, color="#004754"))
                 fig.update_layout(
                     margin=dict(l=90, r=50, t=70, b=170),
-                    legend=dict(orientation="h", y=-0.32, x=0.5, xanchor="center", font=dict(size=10)),
-                    font=dict(size=14),
+                    legend=dict(orientation="h", y=-0.32, x=0.5, xanchor="center", font=dict(size=8)),
+                    font=dict(size=15),
                     template="plotly"
                 )
                 if fig.layout.annotations:
@@ -262,7 +267,7 @@ def export_report_to_pdf(
                         if txt.lower() == "date":
                             continue
                         ann.update(
-                            font=dict(size=max(getattr(ann.font, "size", 12), 20), color="black"),
+                            font=dict(size=max(getattr(ann.font, "size", 12), 22), color="black"),
                             bgcolor="rgba(255,255,255,0.9)",
                             bordercolor="#0B6580",
                             yshift=12
@@ -300,7 +305,7 @@ def export_report_to_pdf(
             ("ALIGN", (0, 0), (-1, 0), "CENTER"),
             ("GRID", (0, 0), (-1, -1), 0.5, ACCENT),
             ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-            ("ROTATE", (1, 0), (-1, 0), 90),
+            ("ROTATE", (0, 0), (-1, 0), 90),  # rotate all headers
         ]
         total_rows = len(df)
         for i in range(total_rows):
@@ -308,6 +313,10 @@ def export_report_to_pdf(
                 table_style += [
                     ("BACKGROUND", (0, i + 1), (-1, i + 1), SECONDARY),
                     ("TEXTCOLOR",  (0, i + 1), (-1, i + 1), colors.white),
+                    ("LINEABOVE", (0, i + 1), (-1, i + 1), 0.5, colors.white),
+                    ("LINEBELOW", (0, i + 1), (-1, i + 1), 0.5, colors.white),
+                    ("LINEBEFORE",(0, i + 1), (-1, i + 1), 0.5, colors.white),
+                    ("LINEAFTER", (0, i + 1), (-1, i + 1), 0.5, colors.white),
                 ]
         pdf_table.setStyle(TableStyle(table_style))
         elements.append(pdf_table)
@@ -323,14 +332,14 @@ def export_report_to_pdf(
         c.setFillColor(DARK)
         page_num = c.getPageNumber()
         footer_text = f"DataSynthesis v1.1 – Page {page_num}"
-        c.drawRightString(width - 50, 22, footer_text)
+        c.drawRightString(width - 50, 27, footer_text)  # shifted up
         if logo_path_inner and os.path.exists(logo_path_inner):
             try:
                 logo_w, logo_h = 70, 28
                 c.drawImage(
                     logo_path_inner,
                     width - 50 - logo_w,
-                    22 + 6,
+                    27 + 6,
                     width=logo_w, height=logo_h,
                     preserveAspectRatio=True, mask="auto"
                 )
@@ -363,7 +372,11 @@ def export_buttons(
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        pdf_buffer = export_report_to_pdf(all_tables, all_figs, logo_path=logo_path, significance_label=significance_label)
+        pdf_buffer = export_report_to_pdf(
+            all_tables, all_figs,
+            logo_path=logo_path,
+            significance_label=significance_label
+        )
         st.download_button(
             "⬇️ Download PDF",
             data=pdf_buffer.getvalue(),
