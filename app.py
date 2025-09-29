@@ -3,6 +3,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import os
 
 # Local modules
 import charts
@@ -19,6 +20,11 @@ st.set_page_config(
     page_icon="🧪",
     layout="wide"
 )
+
+# ------------------------------------------------
+# Asset paths (safe)
+# ------------------------------------------------
+logo_path = os.path.join(os.path.dirname(__file__), "DataSynthesis logo.png")
 
 # ------------------------------------------------
 # Custom CSS Styling
@@ -141,22 +147,16 @@ st.markdown(
 )
 
 # ------------------------------------------------
-# Header with Logo + Version (fixed, no wiggle)
+# Header with Logo + Version (stable, centered)
 # ------------------------------------------------
-st.markdown(
-    """
-    <div style="text-align:center;">
-        <img src="DataSynthesis logo.png" width="250">
-        <h5>Version 1.1</h5>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+st.markdown("<div style='text-align:center;'>", unsafe_allow_html=True)
+st.image(logo_path, width=250)
+st.markdown("<h5>Version 1.1</h5></div>", unsafe_allow_html=True)
 
 # ------------------------------------------------
 # Sidebar global settings
 # ------------------------------------------------
-st.sidebar.image("DataSynthesis logo.png", use_container_width=True)
+st.sidebar.image(logo_path, use_container_width=True)
 st.sidebar.markdown("<h5 style='text-align:center;'>Global Settings</h5>", unsafe_allow_html=True)
 
 alpha_options = {
@@ -295,6 +295,6 @@ if all_tables:
     exports.export_buttons(
         all_tables,
         all_figs,
-        logo_path="DataSynthesis logo.png",
+        logo_path=logo_path,
         significance_label=alpha_label
     )
