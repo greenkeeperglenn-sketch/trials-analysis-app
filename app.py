@@ -147,11 +147,12 @@ st.markdown(
 )
 
 # ------------------------------------------------
-# Header with Logo + Version (stable, centered)
+# Header with Logo + Version (centered, larger)
 # ------------------------------------------------
 st.markdown("<div style='text-align:center;'>", unsafe_allow_html=True)
-st.image(logo_path, width=250)
-st.markdown("<h5>Version 1.1</h5></div>", unsafe_allow_html=True)
+st.image(logo_path, width=400)  # larger logo
+st.markdown("<h5>Version 1.1</h5>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------------------------------------
 # Sidebar global settings
