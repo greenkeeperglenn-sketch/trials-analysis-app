@@ -1,5 +1,3 @@
-# exports.py
-
 import os
 import re
 from io import BytesIO
@@ -204,7 +202,7 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
     elements.append(idx_table)
     elements.append(PageBreak())
 
-    # Helpers (same as before)
+    # Helpers
     def _merge_stats_for_pdf(df):
         df = df.copy()
         cols = list(df.columns)
@@ -230,7 +228,38 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
         width_pts = max(stringWidth(t, "Helvetica", 8) for t in texts) + 18
         return max(140, min(width_pts, 320))
 
-    # (Chart + Table pages unchanged for brevity – same as before)
+    # =========================================
+    # Charts + Tables for each assessment
+    # =========================================
+    for assess, table in all_tables.items():
+        # Chart page
+        if assess in all_figs:
+            fig = all_figs[assess]
+            img_bytes = fig.to_image(format="png", scale=2)
+            img = Image(BytesIO(img_bytes), width=720, height=400)
+            elements.append(Paragraph(f"{assess} – Chart", styles["DSHeading1"]))
+            elements.append(img)
+            elements.append(PageBreak())
+
+        # Table page
+        df = _merge_stats_for_pdf(table)
+        first_col_w = _first_col_width(df)
+        col_widths = [first_col_w] + [60] * (len(df.columns) - 1)
+
+        data = [list(df.columns)] + df.astype(str).values.tolist()
+        tbl = Table(data, colWidths=col_widths, hAlign="CENTER")
+        tbl.setStyle(TableStyle([
+            ("GRID", (0,0), (-1,-1), 0.5, ACCENT),
+            ("BACKGROUND", (0,0), (-1,0), PRIMARY),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("ALIGN", (0,0), (-1,0), "CENTER"),
+            ("FONTSIZE", (0,0), (-1,-1), 8),
+        ]))
+
+        elements.append(Paragraph(f"{assess} – Table", styles["DSHeading1"]))
+        elements.append(tbl)
+        elements.append(PageBreak())
 
     # Footer
     def _footer(c, d, logo_path_inner, experiment_title_inner):
