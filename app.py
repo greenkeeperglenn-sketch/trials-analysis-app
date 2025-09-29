@@ -152,20 +152,6 @@ st.markdown(
 )
 
 # ------------------------------------------------
-# Header with Logo + Version (centered, larger)
-# ------------------------------------------------
-logo_base64 = get_base64_image(logo_path)
-st.markdown(
-    f"""
-    <div style="text-align:center;">
-        <img src="data:image/png;base64,{logo_base64}" style="width:500px; max-width:90%; height:auto;">
-        <h4 style="margin-top:0.5em;">Version 1.1</h2>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
-# ------------------------------------------------
 # Sidebar global settings
 # ------------------------------------------------
 st.sidebar.image(logo_path, use_container_width=True)
@@ -178,6 +164,27 @@ alpha_options = {
 }
 alpha_label = st.sidebar.radio("Significance level:", list(alpha_options.keys()))
 alpha_choice = alpha_options[alpha_label]
+
+# New: Experiment Title input
+experiment_title = st.sidebar.text_input(
+    "Experiment Title",
+    placeholder="Enter a descriptive title..."
+)
+
+# ------------------------------------------------
+# Header with Logo + Version (centered, larger, title)
+# ------------------------------------------------
+logo_base64 = get_base64_image(logo_path)
+st.markdown(
+    f"""
+    <div style="text-align:center;">
+        <img src="data:image/png;base64,{logo_base64}" style="width:500px; max-width:90%; height:auto;">
+        <h2 style="margin-top:0.5em;">Version 1.1</h2>
+        {f"<h1 style='margin-top:0.3em; color:#0B6580;'>{experiment_title}</h1>" if experiment_title else ""}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ------------------------------------------------
 # Prepare containers
@@ -310,4 +317,3 @@ if all_tables:
         logo_path=logo_path,
         significance_label=alpha_label
     )
-
