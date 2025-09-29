@@ -159,7 +159,7 @@ st.markdown(
     f"""
     <div style="text-align:center;">
         <img src="data:image/png;base64,{logo_base64}" style="width:500px; max-width:90%; height:auto;">
-        <h2 style="margin-top:0.5em;">Version 1.1</h2>
+        <h4 style="margin-top:0.5em;">Version 1.1</h2>
     </div>
     """,
     unsafe_allow_html=True
@@ -310,3 +310,4 @@ if all_tables:
         logo_path=logo_path,
         significance_label=alpha_label
     )
+
