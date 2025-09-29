@@ -57,6 +57,16 @@ def _set_fixed_widths_xlsxwriter(df, worksheet):
         else:
             worksheet.set_column(j, j, 10)   # numbers
 
+def _drop_empty_data_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop any column where all data rows (not header) are empty/NaN/whitespace."""
+    keep_cols = []
+    for col in df.columns:
+        values = df[col].astype(str).str.strip()
+        # check if there is at least one non-empty, non-nan value
+        if values.replace("nan", "").replace("NaN", "").ne("").any():
+            keep_cols.append(col)
+    return df[keep_cols]
+
 
 # =========================================
 # EXCEL EXPORT
@@ -67,8 +77,8 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
         for assess, table in all_tables.items():
             df = table.copy()
 
-            # Drop completely empty columns
-            df = df.dropna(axis=1, how="all")
+            # Drop empty/header-only columns
+            df = _drop_empty_data_columns(df)
 
             cols = list(df.columns)
             ordered, used = [], set()
@@ -209,8 +219,8 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
     # Helpers
     def _merge_stats_for_pdf(df):
         df = df.copy()
-        # Drop completely empty columns
-        df = df.dropna(axis=1, how="all")
+        # Drop empty/header-only columns
+        df = _drop_empty_data_columns(df)
         cols = list(df.columns)
         pairs = {}
         for c in cols:
@@ -241,7 +251,8 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
         # Chart page (use fully styled figure from all_figs)
         if assess in all_figs:
             fig = all_figs[assess]
-            img_bytes = fig.to_image(format="png", scale=2)  # keeps colors + axis
+            fig.update_layout(template="plotly_white")  # enforce consistent colors
+            img_bytes = fig.to_image(format="png", scale=2)
             img = Image(BytesIO(img_bytes), width=720, height=400)
             elements.append(Paragraph(f"{assess} – Chart", styles["DSHeading1"]))
             elements.append(img)
