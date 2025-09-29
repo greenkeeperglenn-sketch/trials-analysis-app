@@ -8,7 +8,7 @@ import numpy as np
 import streamlit as st
 
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Image, Spacer, PageBreak, KeepTogether
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Image, Spacer, PageBreak
 )
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
@@ -66,6 +66,10 @@ def export_tables_to_excel(all_tables: dict[str, pd.DataFrame], logo_path=None) 
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
         for assess, table in all_tables.items():
             df = table.copy()
+
+            # Drop completely empty columns
+            df = df.dropna(axis=1, how="all")
+
             cols = list(df.columns)
             ordered, used = [], set()
 
@@ -205,6 +209,8 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
     # Helpers
     def _merge_stats_for_pdf(df):
         df = df.copy()
+        # Drop completely empty columns
+        df = df.dropna(axis=1, how="all")
         cols = list(df.columns)
         pairs = {}
         for c in cols:
@@ -232,10 +238,10 @@ def export_report_to_pdf(all_tables, all_figs, logo_path="DataSynthesis logo.png
     # Charts + Tables for each assessment
     # =========================================
     for assess, table in all_tables.items():
-        # Chart page
+        # Chart page (use fully styled figure from all_figs)
         if assess in all_figs:
             fig = all_figs[assess]
-            img_bytes = fig.to_image(format="png", scale=2)
+            img_bytes = fig.to_image(format="png", scale=2)  # keeps colors + axis
             img = Image(BytesIO(img_bytes), width=720, height=400)
             elements.append(Paragraph(f"{assess} – Chart", styles["DSHeading1"]))
             elements.append(img)
