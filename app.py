@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+import base64
 
 # Local modules
 import charts
@@ -25,6 +26,10 @@ st.set_page_config(
 # Asset paths (safe)
 # ------------------------------------------------
 logo_path = os.path.join(os.path.dirname(__file__), "DataSynthesis logo.png")
+
+def get_base64_image(image_path):
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
 # ------------------------------------------------
 # Custom CSS Styling
@@ -147,12 +152,18 @@ st.markdown(
 )
 
 # ------------------------------------------------
-# Header with Logo + Version (large + centered)
+# Header with Logo + Version (centered, larger)
 # ------------------------------------------------
-st.markdown("<div style='text-align:center;'>", unsafe_allow_html=True)
-st.image(logo_path, width=500)  # bigger logo, Streamlit handles file path
-st.markdown("<h2>Version 1.1</h2>", unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+logo_base64 = get_base64_image(logo_path)
+st.markdown(
+    f"""
+    <div style="text-align:center;">
+        <img src="data:image/png;base64,{logo_base64}" style="width:500px; max-width:90%; height:auto;">
+        <h2 style="margin-top:0.5em;">Version 1.1</h2>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ------------------------------------------------
 # Sidebar global settings
