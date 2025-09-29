@@ -141,12 +141,17 @@ st.markdown(
 )
 
 # ------------------------------------------------
-# Header with Logo + Version
+# Header with Logo + Version (fixed, no wiggle)
 # ------------------------------------------------
-col1, col2, col3 = st.columns([1,3,1])
-with col2:
-    st.image("DataSynthesis logo.png", use_container_width=True)
-    st.markdown("<h5 style='text-align:center;'>Version 1.1</h5>", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div style="text-align:center;">
+        <img src="DataSynthesis logo.png" width="250">
+        <h5>Version 1.1</h5>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ------------------------------------------------
 # Sidebar global settings
