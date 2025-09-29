@@ -75,6 +75,7 @@ st.markdown(
         color:#000 !important;
         border:1px solid var(--accent);
         border-radius:6px;
+        text-align:center !important;
     }
     input, textarea, select { color:#000 !important; }
     .stTextInput input, .stNumberInput input, .stTextArea textarea {
@@ -82,6 +83,10 @@ st.markdown(
         background:#fff !important;
     }
     div[data-testid="stFileUploader"] span {
+        color:#000 !important;
+        text-align:center !important;
+    }
+    div[data-testid="stFileUploader"] button {
         color:#000 !important;
     }
 
@@ -140,13 +145,15 @@ st.markdown(
 # ------------------------------------------------
 col1, col2, col3 = st.columns([1,3,1])
 with col2:
-    st.image("DataSynthesis logo.png", use_column_width=True)
+    st.image("DataSynthesis logo.png", use_container_width=True)
     st.markdown("<h5 style='text-align:center;'>Version 1.1</h5>", unsafe_allow_html=True)
 
 # ------------------------------------------------
 # Sidebar global settings
 # ------------------------------------------------
-st.sidebar.header("Global Settings")
+st.sidebar.image("DataSynthesis logo.png", use_container_width=True)
+st.sidebar.markdown("<h5 style='text-align:center;'>Global Settings</h5>", unsafe_allow_html=True)
+
 alpha_options = {
     "Fungicide (0.05)": 0.05,
     "Biologicals in lab (0.10)": 0.10,
