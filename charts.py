@@ -1,5 +1,3 @@
-# charts.py
-
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
@@ -145,6 +143,9 @@ def make_barchart(df_sub, treatments, date_labels_ordered,
                 textfont=dict(color="black", size=12)
             ))
 
+        # enforce correct order of DateLabel
+        fig.update_xaxes(categoryorder="array", categoryarray=date_labels_ordered)
+
     else:  # By Treatment
         for d in date_labels_ordered:
             df_d = merged[merged["DateLabel"] == d]
@@ -167,6 +168,9 @@ def make_barchart(df_sub, treatments, date_labels_ordered,
                 textposition="outside",
                 textfont=dict(color="black", size=12)
             ))
+
+        # enforce correct order of Treatment
+        fig.update_xaxes(categoryorder="array", categoryarray=treatments)
 
     fig.update_layout(
         barmode="group",
