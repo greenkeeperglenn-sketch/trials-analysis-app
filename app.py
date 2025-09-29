@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.express as px
 import os
 import base64
+from datetime import datetime
 
 # Local modules
 import charts
@@ -172,15 +173,17 @@ experiment_title = st.sidebar.text_input(
 )
 
 # ------------------------------------------------
-# Header with Logo + Version (centered, larger, title)
+# Header with Logo + Version + Experiment Title
 # ------------------------------------------------
 logo_base64 = get_base64_image(logo_path)
+today_str = datetime.today().strftime("%d %B %Y")
 st.markdown(
     f"""
     <div style="text-align:center;">
         <img src="data:image/png;base64,{logo_base64}" style="width:500px; max-width:90%; height:auto;">
         <h2 style="margin-top:0.5em;">Version 1.1</h2>
         {f"<h1 style='margin-top:0.3em; color:#0B6580;'>{experiment_title}</h1>" if experiment_title else ""}
+        <p style="margin-top:0.3em; color:#333;">Report generated: {today_str}</p>
     </div>
     """,
     unsafe_allow_html=True
@@ -315,5 +318,6 @@ if all_tables:
         all_tables,
         all_figs,
         logo_path=logo_path,
-        significance_label=alpha_label
+        significance_label=alpha_label,
+        experiment_title=experiment_title
     )
